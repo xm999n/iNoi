@@ -1,6 +1,7 @@
 name: Release builds
 
 on:
+  workflow_dispatch:  # ← 这是关键！
   release:
     types: [ published ]
 
