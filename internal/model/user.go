@@ -227,10 +227,6 @@ func (u *User) CanCustomizeShareID() bool {
 	return CanCustomizeShareID(u.Permission)
 }
 
-func (u *User) CanShare() bool {
-	return (u.Permission>>14)&1 == 1
-}
-
 func (u *User) JoinPath(reqPath string) (string, error) {
 	return utils.JoinBasePath(u.BasePath, reqPath)
 }

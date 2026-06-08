@@ -100,26 +100,6 @@ type SharingLinkArgs struct {
 	LinkArgs
 }
 
-type SharingListArgs struct {
-	Refresh bool
-	Pwd     string
-}
-
-type SharingArchiveMetaArgs struct {
-	ArchiveMetaArgs
-	Pwd string
-}
-
-type SharingArchiveListArgs struct {
-	ArchiveListArgs
-	Pwd string
-}
-
-type SharingLinkArgs struct {
-	Pwd string
-	LinkArgs
-}
-
 type RangeReaderIF interface {
 	RangeRead(ctx context.Context, httpRange http_range.Range) (io.ReadCloser, error)
 }

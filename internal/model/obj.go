@@ -199,6 +199,7 @@ func GetRawObject(obj Obj) *Object {
 	case *Object:
 		return v
 	}
+	return nil
 }
 
 // Merge

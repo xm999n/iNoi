@@ -1,9 +1,6 @@
 package model
 
-import (
-	"encoding/json"
-	"time"
-)
+import "time"
 
 type Storage struct {
 	ID                  uint      `json:"id" gorm:"primaryKey"`                        // unique key
