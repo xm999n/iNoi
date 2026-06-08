@@ -234,16 +234,7 @@ func (d *downloader) sendChunkTask(newConcurrency bool) (err error) {
 				}
 			}()
 		}
-		err := buf.Reset(int(finalSize))
-		if err != nil {
-			return err
-		}
-		ch := chunk{
-			start: d.pos,
-			size:  finalSize,
-			id:    d.nextChunk,
-			buf:   buf,
-
+	}
 	br := d.bufMap[d.nextChunk]
 	if br == nil {
 		var b buffer.Block
