@@ -11,8 +11,7 @@ import (
 
 	"github.com/OpenListTeam/OpenList/v4/internal/archive/tool"
 	"github.com/OpenListTeam/OpenList/v4/internal/cache"
-	"github.com/OpenListTeam/OpenList/v4/internal/stream"
-
+	"github.com/OpenListTeam/OpenList/v4/internal/conf"
 	"github.com/OpenListTeam/OpenList/v4/internal/driver"
 	"github.com/OpenListTeam/OpenList/v4/internal/errs"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"

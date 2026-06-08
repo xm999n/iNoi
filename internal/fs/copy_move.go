@@ -127,12 +127,12 @@ func transfer(ctx context.Context, taskType taskType, srcObjPath, dstDirPath str
 			ctx = context.WithValue(ctx, conf.SkipHookKey, struct{}{})
 		}
 		if taskType == copy || taskType == merge {
-			err = op.Copy(ctx, srcStorage, srcObjActualPath, dstDirActualPath)
+			err = op.Copy(ctx, srcStorage, srcObjActualPath, dstDirActualPath, true)
 			if !errors.Is(err, errs.NotImplement) && !errors.Is(err, errs.NotSupport) {
 				return nil, err
 			}
 		} else {
-			err = op.Move(ctx, srcStorage, srcObjActualPath, dstDirActualPath)
+			err = op.Move(ctx, srcStorage, srcObjActualPath, dstDirActualPath, true)
 			if !errors.Is(err, errs.NotImplement) && !errors.Is(err, errs.NotSupport) {
 				return nil, err
 			}

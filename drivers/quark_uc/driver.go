@@ -12,6 +12,7 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/driver"
 	"github.com/OpenListTeam/OpenList/v4/internal/errs"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
+	streamPkg "github.com/OpenListTeam/OpenList/v4/internal/stream"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/avast/retry-go"
 	"github.com/go-resty/resty/v2"
@@ -189,15 +190,17 @@ func (d *QuarkOrUC) Put(ctx context.Context, dstDir model.Obj, stream model.File
 		if err != nil {
 			return err
 		}
-		left -= int64(n)
-		log.Debugf("left: %d", left)
-		reader := driver.NewLimitedUploadStream(ctx, bytes.NewReader(part))
-		m, err := d.upPart(ctx, pre, stream.GetMimetype(), partNumber, reader)
-		// m, err := driver.UpPart(pre, file.GetMIMEType(), partNumber, bytes, account, md5Str, sha1Str)
-		if err != nil {
-			return err
-		}
-		if m == "finish" {
+		err = retry.Do(func() error {
+			_, _ = rd.Seek(0, io.SeekStart)
+			m, err := d.upPart(ctx, pre, stream.GetMimetype(), partIndex+1, driver.NewLimitedUploadStream(ctx, rd))
+			if err != nil {
+				return err
+			}
+			if m == "finish" {
+				up(100)
+				return nil
+			}
+			md5s = append(md5s, m)
 			return nil
 		},
 			retry.Context(ctx),

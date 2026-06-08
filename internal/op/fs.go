@@ -4,6 +4,7 @@ import (
 	"context"
 	stderrors "errors"
 	stdpath "path"
+	"strconv"
 	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
@@ -285,7 +286,7 @@ func Other(ctx context.Context, storage driver.Driver, args model.FsOtherArgs) (
 
 var mkdirG singleflight.Group[any]
 
-func MakeDir(ctx context.Context, storage driver.Driver, path string) error {
+func MakeDir(ctx context.Context, storage driver.Driver, path string, lazyCache ...bool) error {
 	if storage.Config().CheckStatus && storage.GetStorage().Status != WORK {
 		return errors.WithMessagef(errs.StorageNotInit, "storage status: %s", storage.GetStorage().Status)
 	}
@@ -293,44 +294,10 @@ func MakeDir(ctx context.Context, storage driver.Driver, path string) error {
 	key := Key(storage, path)
 	_, err, _ := mkdirG.Do(key, func() (any, error) {
 		// check if dir exists
-		f, err := GetUnwrap(ctx, storage, path)
-		if err != nil {
-			if errs.IsObjectNotFound(err) {
-				parentPath, dirName := stdpath.Split(path)
-				err = MakeDir(ctx, storage, parentPath)
-				if err != nil {
-					return nil, errors.WithMessagef(err, "failed to make parent dir [%s]", parentPath)
-				}
-				parentDir, err := GetUnwrap(ctx, storage, parentPath)
-				// this should not happen
-				if err != nil {
-					return nil, errors.WithMessagef(err, "failed to get parent dir [%s]", parentPath)
-				}
-
-				switch s := storage.(type) {
-				case driver.MkdirResult:
-					var newObj model.Obj
-					newObj, err = s.MakeDir(ctx, parentDir, dirName)
-					if err == nil {
-						if newObj != nil {
-							if !storage.Config().NoCache {
-								if dirCache, exist := Cache.dirCache.Get(Key(storage, parentPath)); exist {
-									dirCache.UpdateObject("", newObj)
-								}
-							}
-						} else if !utils.IsBool(lazyCache...) {
-							Cache.DeleteDirectory(storage, parentPath)
-						}
-					}
-				case driver.Mkdir:
-					err = s.MakeDir(ctx, parentDir, dirName)
-					if err == nil && !utils.IsBool(lazyCache...) {
-						Cache.DeleteDirectory(storage, parentPath)
-					}
-				default:
-					return nil, errs.NotImplement
-				}
-				return nil, errors.WithStack(err)
+		f, err := Get(ctx, storage, path)
+		if err == nil {
+			if f.IsDir() {
+				return nil, nil
 			}
 			return nil, errors.New("file exists")
 		}
@@ -338,7 +305,7 @@ func MakeDir(ctx context.Context, storage driver.Driver, path string) error {
 			return nil, errors.WithMessage(err, "failed to check if dir exists")
 		}
 		parentPath, dirName := stdpath.Split(path)
-		if err = MakeDir(ctx, storage, parentPath); err != nil {
+		if err = MakeDir(ctx, storage, parentPath, lazyCache...); err != nil {
 			return nil, errors.WithMessagef(err, "failed to make parent dir [%s]", parentPath)
 		}
 		parentDir, err := GetUnwrap(ctx, storage, parentPath)
@@ -380,13 +347,15 @@ func MakeDir(ctx context.Context, storage driver.Driver, path string) error {
 				}
 			}
 			dirCache.UpdateObject("", wrapObjName(storage, newObj))
+		} else if !utils.IsBool(lazyCache...) {
+			Cache.DeleteDirectory(storage, parentPath)
 		}
 		return nil, nil
 	})
 	return err
 }
 
-func Move(ctx context.Context, storage driver.Driver, srcPath, dstDirPath string) error {
+func Move(ctx context.Context, storage driver.Driver, srcPath, dstDirPath string, lazyCache ...bool) error {
 	if storage.Config().CheckStatus && storage.GetStorage().Status != WORK {
 		return errors.WithMessagef(errs.StorageNotInit, "storage status: %s", storage.GetStorage().Status)
 	}
@@ -470,7 +439,7 @@ func Move(ctx context.Context, storage driver.Driver, srcPath, dstDirPath string
 	return nil
 }
 
-func Rename(ctx context.Context, storage driver.Driver, srcPath, dstName string) error {
+func Rename(ctx context.Context, storage driver.Driver, srcPath, dstName string, lazyCache ...bool) error {
 	if storage.Config().CheckStatus && storage.GetStorage().Status != WORK {
 		return errors.WithMessagef(errs.StorageNotInit, "storage status: %s", storage.GetStorage().Status)
 	}
@@ -482,7 +451,8 @@ func Rename(ctx context.Context, storage driver.Driver, srcPath, dstName string)
 	if err != nil {
 		return errors.WithMessage(err, "failed to get src object")
 	}
-	srcObj := model.UnwrapObj(srcRawObj)
+	oldName := srcRawObj.GetName()
+	srcObj := model.UnwrapObjName(srcRawObj)
 
 	var newObj model.Obj
 	switch s := storage.(type) {
@@ -546,7 +516,7 @@ func Rename(ctx context.Context, storage driver.Driver, srcPath, dstName string)
 }
 
 // Copy Just copy file[s] in a storage
-func Copy(ctx context.Context, storage driver.Driver, srcPath, dstDirPath string) error {
+func Copy(ctx context.Context, storage driver.Driver, srcPath, dstDirPath string, lazyCache ...bool) error {
 	if storage.Config().CheckStatus && storage.GetStorage().Status != WORK {
 		return errors.WithMessagef(errs.StorageNotInit, "storage status: %s", storage.GetStorage().Status)
 	}
@@ -559,7 +529,7 @@ func Copy(ctx context.Context, storage driver.Driver, srcPath, dstDirPath string
 	if err != nil {
 		return errors.WithMessage(err, "failed to get src object")
 	}
-	srcObj := model.UnwrapObj(srcRawObj)
+	srcObj := model.UnwrapObjName(srcRawObj)
 	dstDir, err := GetUnwrap(ctx, storage, dstDirPath)
 	if err != nil {
 		return errors.WithMessage(err, "failed to get dst dir")
@@ -656,7 +626,7 @@ func Remove(ctx context.Context, storage driver.Driver, path string) error {
 	return errors.WithStack(err)
 }
 
-func Put(ctx context.Context, storage driver.Driver, dstDirPath string, file model.FileStreamer, up driver.UpdateProgress) error {
+func Put(ctx context.Context, storage driver.Driver, dstDirPath string, file model.FileStreamer, up driver.UpdateProgress, lazyCache ...bool) error {
 	defer func() {
 		if err := file.Close(); err != nil {
 			log.Errorf("failed to close file streamer, %v", err)
@@ -715,6 +685,7 @@ func Put(ctx context.Context, storage driver.Driver, dstDirPath string, file mod
 		log.Warnf("file size < 0, try to get full size from cache")
 		file.CacheFullAndWriter(nil, nil)
 	}
+	var newObj model.Obj
 	switch s := storage.(type) {
 	case driver.PutResult:
 		newObj, err = s.Put(ctx, parentDir, file, up)
@@ -775,7 +746,7 @@ func Put(ctx context.Context, storage driver.Driver, dstDirPath string, file mod
 	return errors.WithStack(err)
 }
 
-func PutURL(ctx context.Context, storage driver.Driver, dstDirPath, dstName, url string) error {
+func PutURL(ctx context.Context, storage driver.Driver, dstDirPath, dstName, url string, lazyCache ...bool) error {
 	if storage.Config().CheckStatus && storage.GetStorage().Status != WORK {
 		return errors.WithMessagef(errs.StorageNotInit, "storage status: %s", storage.GetStorage().Status)
 	}
@@ -785,7 +756,7 @@ func PutURL(ctx context.Context, storage driver.Driver, dstDirPath, dstName, url
 	if err == nil {
 		return errors.New("obj already exists")
 	}
-	err := MakeDir(ctx, storage, dstDirPath)
+	err = MakeDir(ctx, storage, dstDirPath, lazyCache...)
 	if err != nil {
 		return errors.WithMessagef(err, "failed to make dir [%s]", dstDirPath)
 	}
