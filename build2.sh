@@ -72,6 +72,10 @@ FetchWebRelease() {
   rm -f dist.tar.gz
 }
 
+EnsureGoModules() {
+  go mod download github.com/KarpelesLab/reflink
+}
+
 # ----------------------------
 # Docker 多平台构建
 # ----------------------------
@@ -131,10 +135,12 @@ BuildDockerMultiplatform() {
 if [ "$1" = "dev" ]; then
   echo "== Building Dev Version =="
   FetchWebRelease
+  EnsureGoModules
   BuildDockerMultiplatform
 elif [ "$1" = "release" ]; then
   echo "== Building Release Version =="
   FetchWebRelease
+  EnsureGoModules
   PrepareBuildDockerMusl
   BuildDockerMultiplatform
 else

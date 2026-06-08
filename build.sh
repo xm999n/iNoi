@@ -73,6 +73,10 @@ FetchWebRelease() {
   FetchWebPackage
 }
 
+EnsureGoModules() {
+  go mod download github.com/KarpelesLab/reflink
+}
+
 BuildWinArm64() {
   echo building for windows-arm64
   chmod +x ./wrapper/zcc-arm64
@@ -348,6 +352,7 @@ MakeRelease() {
 
 if [ "$1" = "dev" ]; then
   FetchWebDev
+  EnsureGoModules
   if [ "$2" = "docker" ]; then
     BuildDocker
   elif [ "$2" = "docker-multiplatform" ]; then
@@ -359,6 +364,7 @@ if [ "$1" = "dev" ]; then
   fi
 elif [ "$1" = "release" ]; then
     FetchWebRelease
+    EnsureGoModules
   if [ "$2" = "docker" ]; then
     BuildDocker
   elif [ "$2" = "docker-multiplatform" ]; then

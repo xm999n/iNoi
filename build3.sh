@@ -61,10 +61,15 @@ FetchWebRelease() {
   rm -rf dist.tar.gz
 }
 
+EnsureGoModules() {
+  go mod download github.com/KarpelesLab/reflink
+}
+
 rm -rf "$outDir"
 mkdir -p "$outDir/tmp"
 
 FetchWebRelease
+EnsureGoModules
 
 export GOOS=windows
 export GOARCH=386
