@@ -15,6 +15,7 @@ import (
 
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
 	"github.com/OpenListTeam/OpenList/v4/internal/errs"
+	hcache "github.com/OpenListTeam/OpenList/v4/internal/hybrid_cache"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/pkg/buffer"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
@@ -635,6 +636,10 @@ func (mr *multiReadCloser) Read(p []byte) (n int, err error) {
 		return n, nil
 	}
 	return n, err
+}
+
+func (mr *multiReadCloser) Close() error {
+	return mr.d.interrupt()
 }
 
 type Buf struct {
