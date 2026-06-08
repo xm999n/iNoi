@@ -390,7 +390,7 @@ func (ss *SeekableStream) generateReader() error {
 		if ss.rangeReadCloser == nil {
 			return fmt.Errorf("illegal seekableStream")
 		}
-		rc, err := ss.rangeReader.RangeRead(ss.Ctx, http_range.Range{Length: -1})
+		rc, err := ss.rangeReadCloser.RangeRead(ss.Ctx, http_range.Range{Length: -1})
 		if err != nil {
 			return err
 		}
