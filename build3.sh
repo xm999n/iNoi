@@ -62,6 +62,10 @@ FetchWebRelease() {
 }
 
 EnsureGoModules() {
+  go get github.com/OpenListTeam/OpenList/v4/drivers/local
+  go get github.com/andybalholm/cascadia@v1.3.3
+  go get github.com/OpenListTeam/OpenList/v4/internal/archive/zip
+  go get github.com/quic-go/quic-go/http3@v0.54.1
   go mod download
 }
 
