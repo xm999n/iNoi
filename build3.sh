@@ -8,8 +8,29 @@ zipName="${appName}-windows-386.zip"
 builtAt="$(date +'%F %T %z')"
 gitCommit=$(git rev-parse --short HEAD || echo unknown)
 gitAuthor="The iNoi Projects Contributors <inoi@peifeng.li>"
+frontendRepo="${FRONTEND_REPO:-NecroticGlow/iNoi-Web}"
+localFrontendDir="${INOI_WEB_DIR:-../iNoi-Web}"
+webPackage="${INOI_WEB_DIST_TAR:-../iNoi-Web/compress/dist.tar.gz}"
+githubAuthArgs=""
+if [ -n "$GITHUB_TOKEN" ]; then
+  githubAuthArgs="--header \"Authorization: Bearer $GITHUB_TOKEN\""
+fi
+
+GetWebVersion() {
+  if [ -d "$localFrontendDir/.git" ]; then
+    git -C "$localFrontendDir" rev-parse --short HEAD 2>/dev/null && return
+  fi
+
+  web_tag=$(eval "curl -fsSL --max-time 2 $githubAuthArgs \"https://api.github.com/repos/${frontendRepo}/releases/latest\"" | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/\"//g;s/,//g;s/ //g' || true)
+  if [ -n "$web_tag" ]; then
+    echo "$web_tag"
+  else
+    echo "unknown"
+  fi
+}
+
 version="windows-386"
-webVersion=$(wget -qO- -t1 -T2 "https://api.github.com/repos/li-peifeng/iNoi-Web/releases/latest" | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/\"//g;s/,//g;s/ //g' || echo unknown)
+webVersion=$(GetWebVersion)
 
 echo "== Build Windows 386 =="
 echo "commit: $gitCommit"
@@ -24,7 +45,15 @@ ldflags="\
 "
 
 FetchWebRelease() {
-  curl -L https://github.com/li-peifeng/iNoi-Web/releases/latest/download/dist.tar.gz -o dist.tar.gz
+  if [ -f "$webPackage" ]; then
+    echo "using local frontend package: $webPackage"
+    cp "$webPackage" dist.tar.gz
+  else
+    echo "downloading frontend package from ${frontendRepo}"
+    curl -fL "https://github.com/${frontendRepo}/releases/latest/download/dist.tar.gz" -o dist.tar.gz
+  fi
+
+  rm -rf dist
   tar -zxvf dist.tar.gz
   rm -rf public/dist
   mv -f dist public

@@ -4,21 +4,36 @@ builtAt="$(date +'%F %T %z')"
 gitAuthor="The iNoi Projects Contributors <inoi@peifeng.li>"
 gitCommit=$(git log --pretty=format:"%h" -1)
 
-# Set frontend repository, default to iNoi frontend.
-frontendRepo="${FRONTEND_REPO:-li-peifeng/iNoi-Web}"
+# Set frontend repository and local frontend package.
+frontendRepo="${FRONTEND_REPO:-NecroticGlow/iNoi-Web}"
+localFrontendDir="${INOI_WEB_DIR:-../iNoi-Web}"
+webPackage="${INOI_WEB_DIST_TAR:-../iNoi-Web/compress/dist.tar.gz}"
 
 githubAuthArgs=""
 if [ -n "$GITHUB_TOKEN" ]; then
   githubAuthArgs="--header \"Authorization: Bearer $GITHUB_TOKEN\""
 fi
 
+GetWebVersion() {
+  if [ -d "$localFrontendDir/.git" ]; then
+    git -C "$localFrontendDir" rev-parse --short HEAD 2>/dev/null && return
+  fi
+
+  web_tag=$(eval "curl -fsSL --max-time 2 $githubAuthArgs \"https://api.github.com/repos/${frontendRepo}/releases/latest\"" | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/\"//g;s/,//g;s/ //g' || true)
+  if [ -n "$web_tag" ]; then
+    echo "$web_tag"
+  else
+    echo "unknown"
+  fi
+}
+
 if [ "$1" = "dev" ]; then
   version="dev"
-  webVersion="dev"
+  webVersion=$(GetWebVersion)
 else
   git tag -d beta >/dev/null 2>&1 || true
   version=$(git describe --abbrev=0 --tags)
-  webVersion=$(wget -qO- -t1 -T2 "https://api.github.com/repos/li-peifeng/iNoi-Web/releases/latest" | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/\"//g;s/,//g;s/ //g')
+  webVersion=$(GetWebVersion)
 fi
 
 echo "backend version: $version"
@@ -33,20 +48,28 @@ ldflags="\
 -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.WebVersion=$webVersion' \
 "
 
-FetchWebDev() {
-  curl -L https://codeload.github.com/li-peifeng/iNoi-Dist/tar.gz/refs/heads/dev -o web-dist-dev.tar.gz
-  tar -zxvf web-dist-dev.tar.gz
-  rm -rf public/dist
-  mv -f iNoi-Dist-dev/dist public
-  rm -rf web-dist-dev web-dist-dev.tar.gz
-}
+FetchWebPackage() {
+  if [ -f "$webPackage" ]; then
+    echo "using local frontend package: $webPackage"
+    cp "$webPackage" dist.tar.gz
+  else
+    echo "downloading frontend package from ${frontendRepo}"
+    curl -fL "https://github.com/${frontendRepo}/releases/latest/download/dist.tar.gz" -o dist.tar.gz
+  fi
 
-FetchWebRelease() {
-  curl -L https://github.com/li-peifeng/iNoi-Web/releases/latest/download/dist.tar.gz -o dist.tar.gz
+  rm -rf dist
   tar -zxvf dist.tar.gz
   rm -rf public/dist
   mv -f dist public
-  rm -rf dist.tar.gz
+  rm -f dist.tar.gz
+}
+
+FetchWebDev() {
+  FetchWebPackage
+}
+
+FetchWebRelease() {
+  FetchWebPackage
 }
 
 BuildWinArm64() {

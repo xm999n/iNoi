@@ -6,6 +6,9 @@ appName="iNoi"
 builtAt="$(date +'%F %T %z')"
 gitAuthor="The iNoi Projects Contributors <inoi@peifeng.li>"
 gitCommit=$(git log --pretty=format:"%h" -1 || echo "0000000")
+frontendRepo="${FRONTEND_REPO:-NecroticGlow/iNoi-Web}"
+localFrontendDir="${INOI_WEB_DIR:-../iNoi-Web}"
+webPackage="${INOI_WEB_DIST_TAR:-../iNoi-Web/compress/dist.tar.gz}"
 
 # GitHub Token HTTP Header（可选）
 githubAuthArgs=""
@@ -13,17 +16,27 @@ if [ -n "$GITHUB_TOKEN" ]; then
   githubAuthArgs="--header \"Authorization: Bearer $GITHUB_TOKEN\""
 fi
 
+GetWebVersion() {
+  if [ -d "$localFrontendDir/.git" ]; then
+    git -C "$localFrontendDir" rev-parse --short HEAD 2>/dev/null && return
+  fi
+
+  web_tag=$(eval "curl -fsSL --max-time 2 $githubAuthArgs \"https://api.github.com/repos/${frontendRepo}/releases/latest\"" | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/\"//g;s/,//g;s/ //g' || true)
+  if [ -n "$web_tag" ]; then
+    echo "$web_tag"
+  else
+    echo "unknown"
+  fi
+}
+
 # 版本信息
 if [ "$1" = "dev" ]; then
   version="dev"
-  webVersion="dev"
+  webVersion=$(GetWebVersion)
 else
   # 如果没有 tag，用默认 main
   version=$(git describe --abbrev=0 --tags 2>/dev/null || echo "0.0.0-main")
-  # 前端版本从最新 release 获取
-  webVersion=$(curl -s -H "Accept: application/vnd.github.v3+json" \
-    https://api.github.com/repos/li-peifeng/iNoi-Web/releases/latest | \
-    jq -r '.tag_name' 2>/dev/null || echo "main")
+  webVersion=$(GetWebVersion)
 fi
 
 echo "backend version: $version"
@@ -43,7 +56,15 @@ ldflags="\
 # 前端资源下载
 # ----------------------------
 FetchWebRelease() {
-  curl -L https://github.com/li-peifeng/iNoi-Web/releases/latest/download/dist.tar.gz -o dist.tar.gz
+  if [ -f "$webPackage" ]; then
+    echo "using local frontend package: $webPackage"
+    cp "$webPackage" dist.tar.gz
+  else
+    echo "downloading frontend package from ${frontendRepo}"
+    curl -fL "https://github.com/${frontendRepo}/releases/latest/download/dist.tar.gz" -o dist.tar.gz
+  fi
+
+  rm -rf dist
   tar -zxvf dist.tar.gz
   rm -rf public/dist
   mv -f dist public
