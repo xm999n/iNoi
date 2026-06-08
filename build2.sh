@@ -73,7 +73,7 @@ FetchWebRelease() {
 }
 
 EnsureGoModules() {
-  go mod download github.com/KarpelesLab/reflink
+  go mod download
 }
 
 # ----------------------------
