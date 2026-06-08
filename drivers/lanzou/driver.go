@@ -31,7 +31,7 @@ func (d *LanZou) GetAddition() driver.Additional {
 
 func (d *LanZou) Init(ctx context.Context) (err error) {
 	if d.UserAgent == "" {
-		d.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.39 (KHTML, like Gecko) Chrome/89.0.4389.111 Safari/537.39"
+		d.UserAgent = base.UserAgentNT
 	}
 	switch d.Type {
 	case "account":
@@ -117,7 +117,7 @@ func (d *LanZou) Link(ctx context.Context, file model.Obj, args model.LinkArgs) 
 	return &model.Link{
 		URL: dfile.Url,
 		Header: http.Header{
-			"User-Agent": []string{base.UserAgent},
+			"User-Agent": {d.UserAgent},
 		},
 		Expiration: &exp,
 	}, nil

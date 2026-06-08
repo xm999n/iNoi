@@ -5,19 +5,23 @@ import (
 	"fmt"
 	"path"
 
+	"github.com/OpenListTeam/OpenList/v4/internal/conf"
 	"github.com/OpenListTeam/OpenList/v4/internal/driver"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/internal/op"
+	"github.com/OpenListTeam/OpenList/v4/internal/setting"
+	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/time/rate"
 )
 
 type SrcPathToRemove string
 
 // ActualPath
-type DstPathToRefresh string
+type DstPathToHook string
 
-func RefreshAndRemove(dstPath string, payloads ...any) {
+func HookAndRemove(ctx context.Context, dstPath string, payloads ...any) {
 	dstStorage, dstActualPath, err := op.GetStorageAndActualPath(dstPath)
 	if err != nil {
 		log.Error(errors.WithMessage(err, "failed get dst storage"))
@@ -27,7 +31,6 @@ func RefreshAndRemove(dstPath string, payloads ...any) {
 	if dstNeedRefresh {
 		op.Cache.DeleteDirectory(dstStorage, dstActualPath)
 	}
-	var ctx context.Context
 	for _, payload := range payloads {
 		switch p := payload.(type) {
 		case DstPathToRefresh:
@@ -35,15 +38,12 @@ func RefreshAndRemove(dstPath string, payloads ...any) {
 				op.Cache.DeleteDirectory(dstStorage, string(p))
 			}
 		case SrcPathToRemove:
-			if ctx == nil {
-				ctx = context.Background()
-			}
 			srcStorage, srcActualPath, err := op.GetStorageAndActualPath(string(p))
 			if err != nil {
 				log.Error(errors.WithMessage(err, "failed get src storage"))
 				continue
 			}
-			err = verifyAndRemove(ctx, srcStorage, dstStorage, srcActualPath, dstActualPath, dstNeedRefresh)
+			err = verifyAndRemove(ctx, srcStorage, dstStorage, srcActualPath, dstActualPath)
 			if err != nil {
 				log.Error(err)
 			}
@@ -51,14 +51,14 @@ func RefreshAndRemove(dstPath string, payloads ...any) {
 	}
 }
 
-func verifyAndRemove(ctx context.Context, srcStorage, dstStorage driver.Driver, srcPath, dstPath string, refresh bool) error {
-	srcObj, err := op.Get(ctx, srcStorage, srcPath)
+func verifyAndRemove(ctx context.Context, srcStorage, dstStorage driver.Driver, srcPath, dstPath string) error {
+	srcObj, err := op.GetUnwrap(ctx, srcStorage, srcPath)
 	if err != nil {
 		return errors.WithMessagef(err, "failed get src [%s] file", path.Join(srcStorage.GetStorage().MountPath, srcPath))
 	}
 
 	dstObjPath := path.Join(dstPath, srcObj.GetName())
-	dstObj, err := op.Get(ctx, dstStorage, dstObjPath)
+	dstObj, err := op.GetUnwrap(ctx, dstStorage, dstObjPath)
 	if err != nil {
 		return errors.WithMessagef(err, "failed get dst [%s] file", path.Join(dstStorage.GetStorage().MountPath, dstObjPath))
 	}
@@ -83,7 +83,7 @@ func verifyAndRemove(ctx context.Context, srcStorage, dstStorage driver.Driver, 
 	hasErr := false
 	for _, obj := range srcObjs {
 		srcSubPath := path.Join(srcPath, obj.GetName())
-		err := verifyAndRemove(ctx, srcStorage, dstStorage, srcSubPath, dstObjPath, refresh)
+		err := verifyAndRemove(ctx, srcStorage, dstStorage, srcSubPath, dstObjPath)
 		if err != nil {
 			log.Error(err)
 			hasErr = true
@@ -99,4 +99,4 @@ func verifyAndRemove(ctx context.Context, srcStorage, dstStorage driver.Driver, 
 	return nil
 }
 
-var TransferCoordinator *TaskGroupCoordinator = NewTaskGroupCoordinator("RefreshAndRemove", RefreshAndRemove)
+var TransferCoordinator *TaskGroupCoordinator = NewTaskGroupCoordinator("HookAndRemove", HookAndRemove)

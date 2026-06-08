@@ -88,7 +88,7 @@ func (d *OnedriveAPP) _accessToken() error {
 	return nil
 }
 
-func (d *OnedriveAPP) Request(url string, method string, callback base.ReqCallback, resp interface{}) ([]byte, error) {
+func (d *OnedriveAPP) Request(url string, method string, callback base.ReqCallback, resp interface{}, noRetry ...bool) ([]byte, error) {
 	req := base.RestyClient.R()
 	req.SetHeader("Authorization", "Bearer "+d.AccessToken)
 	if callback != nil {
@@ -104,7 +104,7 @@ func (d *OnedriveAPP) Request(url string, method string, callback base.ReqCallba
 		return nil, err
 	}
 	if e.Error.Code != "" {
-		if e.Error.Code == "InvalidAuthenticationToken" {
+		if e.Error.Code == "InvalidAuthenticationToken" && !utils.IsBool(noRetry...) {
 			err = d.accessToken()
 			if err != nil {
 				return nil, err
@@ -196,6 +196,7 @@ func (d *OnedriveAPP) upBig(ctx context.Context, dstDir model.Obj, stream model.
 					return nil
 				}
 			},
+			retry.Context(ctx),
 			retry.Attempts(3),
 			retry.DelayType(retry.BackOffDelay),
 			retry.Delay(time.Second),

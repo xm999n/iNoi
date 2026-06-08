@@ -4,6 +4,9 @@ builtAt="$(date +'%F %T %z')"
 gitAuthor="The iNoi Projects Contributors <inoi@peifeng.li>"
 gitCommit=$(git log --pretty=format:"%h" -1)
 
+# Set frontend repository, default to iNoi frontend.
+frontendRepo="${FRONTEND_REPO:-li-peifeng/iNoi-Web}"
+
 githubAuthArgs=""
 if [ -n "$GITHUB_TOKEN" ]; then
   githubAuthArgs="--header \"Authorization: Bearer $GITHUB_TOKEN\""
@@ -61,7 +64,7 @@ BuildWinArm64() {
 BuildDev() {
   rm -rf .git/
   mkdir -p "dist"
-  muslflags="--extldflags '-static -fpic' $ldflags"
+  muslflags="$(GetMuslStaticLdflags)"
   BASE="https://github.com/OpenListTeam/musl-compilers/releases/latest/download/"
   FILES=(x86_64-linux-musl-cross aarch64-linux-musl-cross)
   for i in "${FILES[@]}"; do
@@ -79,7 +82,8 @@ BuildDev() {
     export GOARCH=${os_arch##*-}
     export CC=${cgo_cc}
     export CGO_ENABLED=1
-    go build -o ./dist/$appName-$os_arch -ldflags="$muslflags" -tags=jsoniter .
+    CGO_LDFLAGS="-static" go build -o ./dist/$appName-$os_arch -ldflags="$muslflags" -tags=jsoniter .
+    AssertStaticBinary "./dist/$appName-$os_arch"
   done
   xgo -targets=windows/amd64,darwin/amd64,darwin/arm64 -out "$appName" -ldflags="$ldflags" -tags=jsoniter .
   mv "$appName"-* dist
@@ -113,7 +117,7 @@ BuildDockerMultiplatform() {
   # run PrepareBuildDockerMusl before build
   export PATH=$PATH:$PWD/build/musl-libs/bin
 
-  docker_lflags="--extldflags '-static -fpic' $ldflags"
+  docker_lflags="$(GetMuslStaticLdflags)"
   export CGO_ENABLED=1
 
   OS_ARCHES=(linux-amd64 linux-arm64 linux-386 linux-s390x linux-riscv64 linux-ppc64le)
@@ -123,11 +127,13 @@ BuildDockerMultiplatform() {
     cgo_cc=${CGO_ARGS[$i]}
     os=${os_arch%%-*}
     arch=${os_arch##*-}
+    build_tags=$(GetBuildTagsForTarget "$os_arch")
     export GOOS=$os
     export GOARCH=$arch
     export CC=${cgo_cc}
     echo "building for $os_arch"
-    go build -o build/$os/$arch/"$appName" -ldflags="$docker_lflags" -tags=jsoniter .
+    CGO_LDFLAGS="-static" go build -o build/$os/$arch/"$appName" -ldflags="$docker_lflags" -tags="$build_tags" .
+    AssertStaticBinary "build/$os/$arch/$appName"
   done
 
   DOCKER_ARM_ARCHES=(linux-arm/v6 linux-arm/v7)
@@ -141,7 +147,8 @@ BuildDockerMultiplatform() {
     export GOARM=${GO_ARM[$i]}
     export CC=${cgo_cc}
     echo "building for $docker_arch"
-    go build -o build/${docker_arch%%-*}/${docker_arch##*-}/"$appName" -ldflags="$docker_lflags" -tags=jsoniter .
+    CGO_LDFLAGS="-static" go build -o build/${docker_arch%%-*}/${docker_arch##*-}/"$appName" -ldflags="$docker_lflags" -tags=jsoniter .
+    AssertStaticBinary "build/${docker_arch%%-*}/${docker_arch##*-}/$appName"
   done
 }
 
@@ -160,8 +167,9 @@ BuildRelease() {
 BuildReleaseLinuxMusl() {
   rm -rf .git/
   mkdir -p "build"
-  muslflags="--extldflags '-static -fpic' $ldflags"
+  muslflags="$(GetMuslStaticLdflags)"
   BASE="https://github.com/OpenListTeam/musl-compilers/releases/latest/download/"
+  # Keep mips-family targets enabled; sqlite driver selection is handled by Go build tags.
   FILES=(x86_64-linux-musl-cross aarch64-linux-musl-cross mips-linux-musl-cross mips64-linux-musl-cross mips64el-linux-musl-cross mipsel-linux-musl-cross powerpc64le-linux-musl-cross s390x-linux-musl-cross loongarch64-linux-musl-cross)
   for i in "${FILES[@]}"; do
     url="${BASE}${i}.tgz"
@@ -174,19 +182,21 @@ BuildReleaseLinuxMusl() {
   for i in "${!OS_ARCHES[@]}"; do
     os_arch=${OS_ARCHES[$i]}
     cgo_cc=${CGO_ARGS[$i]}
+    build_tags=$(GetBuildTagsForTarget "$os_arch")
     echo building for ${os_arch}
     export GOOS=${os_arch%%-*}
     export GOARCH=${os_arch##*-}
     export CC=${cgo_cc}
     export CGO_ENABLED=1
-    go build -o ./build/$appName-$os_arch -ldflags="$muslflags" -tags=jsoniter .
+    CGO_LDFLAGS="-static" go build -o ./build/$appName-$os_arch -ldflags="$muslflags" -tags="$build_tags" .
+    AssertStaticBinary "./build/$appName-$os_arch"
   done
 }
 
 BuildReleaseLinuxMuslArm() {
   rm -rf .git/
   mkdir -p "build"
-  muslflags="--extldflags '-static -fpic' $ldflags"
+  muslflags="$(GetMuslStaticLdflags)"
   BASE="https://github.com/OpenListTeam/musl-compilers/releases/latest/download/"
   FILES=(arm-linux-musleabi-cross arm-linux-musleabihf-cross armel-linux-musleabi-cross armel-linux-musleabihf-cross armv5l-linux-musleabi-cross armv5l-linux-musleabihf-cross armv6-linux-musleabi-cross armv6-linux-musleabihf-cross armv7l-linux-musleabihf-cross armv7m-linux-musleabi-cross armv7r-linux-musleabihf-cross)
   for i in "${FILES[@]}"; do
@@ -208,7 +218,8 @@ BuildReleaseLinuxMuslArm() {
     export CC=${cgo_cc}
     export CGO_ENABLED=1
     export GOARM=${arm}
-    go build -o ./build/$appName-$os_arch -ldflags="$muslflags" -tags=jsoniter .
+    CGO_LDFLAGS="-static" go build -o ./build/$appName-$os_arch -ldflags="$muslflags" -tags=jsoniter .
+    AssertStaticBinary "./build/$appName-$os_arch"
   done
 }
 

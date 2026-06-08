@@ -196,9 +196,6 @@ func (f *FileStream) CacheFullAndWriter(up *model.UpdateProgress, writer io.Writ
 }
 
 func (f *FileStream) GetFile() model.File {
-	if f.tmpFile != nil {
-		return f.tmpFile
-	}
 	if file, ok := f.Reader.(model.File); ok {
 		return file
 	}
@@ -282,22 +279,51 @@ func (f *FileStream) SetTmpFile(file model.File) {
 	f.Reader = file
 }
 
+// *旧笔记
+// 使用bytes.Buffer作为io.CopyBuffer的写入对象，CopyBuffer会调用Buffer.ReadFrom
+// 即使被写入的数据量与Buffer.Cap一致，Buffer也会扩大
+
+// 确保指定大小的数据被缓存
+func (f *FileStream) ensureCache(size int64) (model.File, error) {
+	if f.peek == nil {
+		blockSize := min(size, f.GetSize(), int64(conf.MaxBlockLimit))
+		var err error
+		f.hc, err = hcache.NewHybridCache(uint64(blockSize), uint64(f.GetSize()))
+		if err != nil {
+			return nil, err
+		}
+		f.peek = buffer.NewDynamicReadAtSeeker(f.hc)
+		f.oriReader = f.Reader
+		f.Reader = io.MultiReader(f.peek, f.oriReader)
+		f.Add(f.hc)
+	}
+	size = size - f.peek.Size()
+	if size <= 0 {
+		return f.peek, nil
+	}
+	written, err := f.hc.CopyFromN(f.oriReader, size)
+	if written != size {
+		f.hc.RewindBySize(uint64(size - written))
+		return nil, fmt.Errorf("failed to read all data: (expect =%d, actual =%d) %w", size, written, err)
+	}
+	if f.peek.Size() >= f.GetSize() {
+		f.Reader = f.peek
+	}
+	return f.peek, nil
+}
+
 var _ model.FileStreamer = (*SeekableStream)(nil)
 var _ model.FileStreamer = (*FileStream)(nil)
 
-//var _ seekableStream = (*FileStream)(nil)
-
-// for most internal stream, which is either RangeReadCloser or MFile
-// Any functionality implemented based on SeekableStream should implement a Close method,
-// whose only purpose is to close the SeekableStream object. If such functionality has
-// additional resources that need to be closed, they should be added to the Closer property of
-// the SeekableStream object and be closed together when the SeekableStream object is closed.
 type SeekableStream struct {
 	*FileStream
 	// should have one of belows to support rangeRead
 	rangeReadCloser model.RangeReadCloserIF
 }
 
+// NewSeekableStream create a SeekableStream from FileStream and Link
+// if FileStream.Reader is not nil, use it directly
+// else create RangeReader from Link
 func NewSeekableStream(fs *FileStream, link *model.Link) (*SeekableStream, error) {
 	if len(fs.Mimetype) == 0 {
 		fs.Mimetype = utils.GetMimeType(fs.Obj.GetName())
@@ -341,6 +367,7 @@ func (ss *SeekableStream) RangeRead(httpRange http_range.Range) (io.Reader, erro
 		if err != nil {
 			return nil, err
 		}
+		ss.Add(rc)
 		return rc, nil
 	}
 	return ss.FileStream.RangeRead(httpRange)
@@ -359,10 +386,11 @@ func (ss *SeekableStream) generateReader() error {
 		if ss.rangeReadCloser == nil {
 			return fmt.Errorf("illegal seekableStream")
 		}
-		rc, err := ss.rangeReadCloser.RangeRead(ss.Ctx, http_range.Range{Length: -1})
+		rc, err := ss.rangeReader.RangeRead(ss.Ctx, http_range.Range{Length: -1})
 		if err != nil {
 			return err
 		}
+		ss.Add(rc)
 		ss.Reader = rc
 	}
 	return nil
@@ -464,12 +492,12 @@ func (r *RangeReadReadAtSeeker) InitHeadCache() {
 }
 
 func NewReadAtSeeker(ss *SeekableStream, offset int64, forceRange ...bool) (model.File, error) {
-	if ss.GetFile() != nil {
-		_, err := ss.GetFile().Seek(offset, io.SeekStart)
+	if cache := ss.GetFile(); cache != nil {
+		_, err := cache.Seek(offset, io.SeekStart)
 		if err != nil {
 			return nil, err
 		}
-		return ss.GetFile(), nil
+		return cache, nil
 	}
 	r := &RangeReadReadAtSeeker{
 		ss:        ss,
@@ -479,10 +507,11 @@ func NewReadAtSeeker(ss *SeekableStream, offset int64, forceRange ...bool) (mode
 		if offset < 0 || offset > ss.GetSize() {
 			return nil, errors.New("offset out of range")
 		}
-		_, err := r.getReaderAtOffset(offset)
+		reader, err := r.getReaderAtOffset(offset)
 		if err != nil {
 			return nil, err
 		}
+		r.readerMap.Store(int64(offset), reader)
 	} else {
 		r.readerMap.Store(int64(offset), ss)
 	}

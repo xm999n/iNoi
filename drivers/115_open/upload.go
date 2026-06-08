@@ -36,7 +36,7 @@ func calPartSize(fileSize int64) int64 {
 }
 
 func (d *Open115) singleUpload(ctx context.Context, tempF model.File, tokenResp *sdk.UploadGetTokenResp, initResp *sdk.UploadInitResp) error {
-	ossClient, err := oss.New(tokenResp.Endpoint, tokenResp.AccessKeyId, tokenResp.AccessKeySecret, oss.SecurityToken(tokenResp.SecurityToken))
+	ossClient, err := netutil.NewOSSClient(tokenResp.Endpoint, tokenResp.AccessKeyId, tokenResp.AccessKeySecret, oss.SecurityToken(tokenResp.SecurityToken))
 	if err != nil {
 		return err
 	}
@@ -117,6 +117,7 @@ func (d *Open115) multpartUpload(ctx context.Context, stream model.FileStreamer,
 			parts[i-1] = part
 			return nil
 		},
+			retry.Context(ctx),
 			retry.Attempts(3),
 			retry.DelayType(retry.BackOffDelay),
 			retry.Delay(time.Second))

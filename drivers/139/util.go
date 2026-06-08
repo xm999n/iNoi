@@ -3,12 +3,14 @@ package _139
 import (
 	"context"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"path"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,6 +25,11 @@ import (
 	"github.com/go-resty/resty/v2"
 	jsoniter "github.com/json-iterator/go"
 	log "github.com/sirupsen/logrus"
+)
+
+const (
+	KEY_HEX_1 = "73634235495062495331515373756c734e7253306c673d3d" // 第一层 AES 解密密钥
+	KEY_HEX_2 = "7150714477323633586746674c337538"                 // 第二层 AES 解密密钥
 )
 
 // do others that not defined in Driver interface
@@ -96,12 +103,16 @@ func (d *Yun139) refreshToken() error {
 		SetBody(reqBody).
 		SetResult(&resp).
 		Post(url)
-	if err != nil {
-		return err
+	if err != nil || resp.Return != "0" {
+		log.Warnf("139yun: failed to refresh token with old token: %v, desc: %s. trying to login with password.", err, resp.Desc)
+		newAuth, loginErr := d.loginWithPassword()
+		log.Debugf("newAuth: Ok: %s", newAuth)
+		if loginErr != nil {
+			return fmt.Errorf("failed to login with password after refresh failed: %w", loginErr)
+		}
+		return nil
 	}
-	if resp.Return != "0" {
-		return fmt.Errorf("failed to refresh token: %s", resp.Desc)
-	}
+
 	d.Authorization = base64.StdEncoding.EncodeToString([]byte(splits[0] + ":" + splits[1] + ":" + resp.Token))
 	op.MustSaveDriverStorage(d)
 	return nil
@@ -146,10 +157,29 @@ func (d *Yun139) request(url string, method string, callback base.ReqCallback, r
 
 	var e BaseResp
 	req.SetResult(&e)
+	log.Debugf("[139] request: %s %s, body: %s", method, url, string(body))
 	res, err := req.Execute(method, url)
-	log.Debugln(res.String())
+	if err != nil {
+		log.Debugf("[139] request error: %v", err)
+		return nil, err
+	}
+	log.Debugf("[139] response body: %s", res.String())
 	if !e.Success {
-		return nil, errors.New(e.Message)
+		// Always try to unmarshal to the specific response type first if 'resp' is provided.
+		if resp != nil {
+			err = utils.Json.Unmarshal(res.Body(), resp)
+			if err != nil {
+				log.Debugf("[139] failed to unmarshal response to specific type: %v", err)
+				return nil, err // Return unmarshal error
+			}
+			if createBatchOprTaskResp, ok := resp.(*CreateBatchOprTaskResp); ok {
+				log.Debugf("[139] CreateBatchOprTaskResp.Result.ResultCode: %s", createBatchOprTaskResp.Result.ResultCode)
+				if createBatchOprTaskResp.Result.ResultCode == "0" {
+					goto SUCCESS_PROCESS
+				}
+			}
+		}
+		return nil, errors.New(e.Message) // Fallback to original error if not handled
 	}
 	if resp != nil {
 		err = utils.Json.Unmarshal(res.Body(), resp)
@@ -157,6 +187,7 @@ func (d *Yun139) request(url string, method string, callback base.ReqCallback, r
 			return nil, err
 		}
 	}
+SUCCESS_PROCESS:
 	return res.Body(), nil
 }
 
@@ -311,6 +342,9 @@ func (d *Yun139) familyGetFiles(catalogID string) ([]model.Obj, error) {
 			return nil, err
 		}
 		path := resp.Data.Path
+		if catalogID == d.RootFolderID {
+			d.RootPath = path
+		}
 		for _, catalog := range resp.Data.CloudCatalogList {
 			f := model.Object{
 				ID:       catalog.CatalogID,
@@ -366,6 +400,9 @@ func (d *Yun139) groupGetFiles(catalogID string) ([]model.Obj, error) {
 			return nil, err
 		}
 		path := resp.Data.GetGroupContentResult.ParentCatalogID
+		if catalogID == d.RootFolderID {
+			d.RootPath = path
+		}
 		for _, catalog := range resp.Data.GetGroupContentResult.CatalogList {
 			f := model.Object{
 				ID:       catalog.CatalogID,
@@ -494,11 +531,13 @@ func (d *Yun139) personalRequest(pathname string, method string, callback base.R
 
 	var e BaseResp
 	req.SetResult(&e)
+	log.Debugf("[139] personal request: %s %s, body: %s", method, url, string(body))
 	res, err := req.Execute(method, url)
 	if err != nil {
+		log.Debugf("[139] personal request error: %v", err)
 		return nil, err
 	}
-	log.Debugln(res.String())
+	log.Debugf("[139] personal response body: %s", res.String())
 	if !e.Success {
 		return nil, errors.New(e.Message)
 	}
@@ -513,6 +552,13 @@ func (d *Yun139) personalRequest(pathname string, method string, callback base.R
 
 func (d *Yun139) personalPost(pathname string, data interface{}, resp interface{}) ([]byte, error) {
 	return d.personalRequest(pathname, http.MethodPost, func(req *resty.Request) {
+		req.SetBody(data)
+	}, resp)
+}
+
+func (d *Yun139) isboPost(pathname string, data interface{}, resp interface{}) ([]byte, error) {
+	url := "https://group.yun.139.com/hcy/mutual/adapter" + pathname
+	return d.request(url, http.MethodPost, func(req *resty.Request) {
 		req.SetBody(data)
 	}, resp)
 }
@@ -603,10 +649,12 @@ func (d *Yun139) personalGetLink(fileId string) (string, error) {
 	}
 	cdnUrl := jsoniter.Get(res, "data", "cdnUrl").ToString()
 	if cdnUrl != "" {
-		return cdnUrl, nil
-	} else {
-		return jsoniter.Get(res, "data", "url").ToString(), nil
+		cdnSwitch := jsoniter.Get(res, "data", "cdnSwitch").ToBool()
+		if cdnSwitch {
+			return cdnUrl, nil
+		}
 	}
+	return jsoniter.Get(res, "data", "url").ToString(), nil
 }
 
 func (d *Yun139) getAuthorization() string {

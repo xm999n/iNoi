@@ -1,14 +1,14 @@
 blank_issues_enabled: true
 contact_links:
   - name: 问题和讨论
-    url: https://github.com/OpenListTeam/OpenList/discussions
+    url: https://github.com/li-peifeng/iNoi/discussions
     about: 讨论、问题、想法等
   - name: Questions & Discussions
-    url: https://github.com/OpenListTeam/OpenList/discussions
+    url: https://github.com/li-peifeng/iNoi/discussions
     about: Discuss issues, ideas, etc.
   - name: 即时聊天
-    url: https://t.me/OpenListTeam
+    url: https://t.me/openinoi
     about: 与我们聊天
   - name: Chat
-    url: https://t.me/OpenListTeam
+    url: https://t.me/openinoi
     about: Chat with us

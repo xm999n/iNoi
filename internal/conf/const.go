@@ -73,6 +73,9 @@ const (
 	// 115
 	Pan115TempDir = "115_temp_dir"
 
+	// 123
+	Pan123TempDir = "123_temp_dir"
+
 	// 115_open
 	Pan115OpenTempDir = "115_open_temp_dir"
 
@@ -111,6 +114,7 @@ const (
 	// ldap
 	LdapLoginEnabled      = "ldap_login_enabled"
 	LdapServer            = "ldap_server"
+	LdapSkipTlsVerify     = "ldap_skip_tls_verify"
 	LdapManagerDN         = "ldap_manager_dn"
 	LdapManagerPassword   = "ldap_manager_password"
 	LdapUserSearchBase    = "ldap_user_search_base"
@@ -166,7 +170,7 @@ const (
 )
 
 // ContextKey is the type of context keys.
-type ContextKey int
+type ContextKey int8
 
 const (
 	_ ContextKey = iota

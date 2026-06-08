@@ -1,7 +1,6 @@
 package quark
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
 	"hash"
@@ -14,8 +13,8 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/errs"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
+	"github.com/avast/retry-go"
 	"github.com/go-resty/resty/v2"
-	log "github.com/sirupsen/logrus"
 )
 
 type QuarkOrUC struct {
@@ -80,8 +79,11 @@ func (d *QuarkOrUC) MakeDir(ctx context.Context, parentDir model.Obj, dirName st
 	_, err := d.request("/file", http.MethodPost, func(req *resty.Request) {
 		req.SetBody(data)
 	}, nil)
-	if err == nil {
+	if err == nil || err.Error() == "file is doloading[同名冲突]" {
 		time.Sleep(time.Second)
+	}
+	if err != nil && err.Error() == "file is doloading[同名冲突]" {
+		return errs.ObjectAlreadyExists
 	}
 	return err
 }
@@ -159,34 +161,31 @@ func (d *QuarkOrUC) Put(ctx context.Context, dstDir model.Obj, stream model.File
 	if err != nil {
 		return err
 	}
-	log.Debugln("hash: ", md5Str, sha1Str)
 	// hash
 	finish, err := d.upHash(md5Str, sha1Str, pre.Data.TaskId)
 	if err != nil {
 		return err
 	}
 	if finish {
+		up(100)
 		return nil
 	}
 	// part up
-	total := stream.GetSize()
-	left := total
-	partSize := int64(pre.Metadata.PartSize)
-	part := make([]byte, partSize)
-	count := int(total / partSize)
-	if total%partSize > 0 {
-		count++
+	ss, err := streamPkg.NewStreamSectionReader(stream, pre.Metadata.PartSize, &up)
+	if err != nil {
+		return err
 	}
-	md5s := make([]string, 0, count)
-	partNumber := 1
-	for left > 0 {
+	total := stream.GetSize()
+	partSize := int64(pre.Metadata.PartSize)
+	uploadNums := int((total + partSize - 1) / partSize)
+	md5s := make([]string, 0, uploadNums)
+	for partIndex := range uploadNums {
 		if utils.IsCanceled(ctx) {
 			return ctx.Err()
 		}
-		if left < partSize {
-			part = part[:left]
-		}
-		n, err := io.ReadFull(stream, part)
+		offset := int64(partIndex) * partSize
+		size := min(partSize, total-offset)
+		rd, err := ss.GetSectionReader(offset, size)
 		if err != nil {
 			return err
 		}
@@ -200,15 +199,23 @@ func (d *QuarkOrUC) Put(ctx context.Context, dstDir model.Obj, stream model.File
 		}
 		if m == "finish" {
 			return nil
+		},
+			retry.Context(ctx),
+			retry.Attempts(3),
+			retry.DelayType(retry.BackOffDelay),
+			retry.Delay(time.Second))
+		ss.FreeSectionReader(rd)
+		if err != nil {
+			return err
 		}
-		md5s = append(md5s, m)
-		partNumber++
-		up(100 * float64(total-left) / float64(total))
+		up(95 * float64(offset+size) / float64(total))
 	}
+	up(97)
 	err = d.upCommit(pre, md5s)
 	if err != nil {
 		return err
 	}
+	defer up(100)
 	return d.upFinish(pre)
 }
 

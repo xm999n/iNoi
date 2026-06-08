@@ -14,6 +14,7 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/errs"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/internal/net"
+	"github.com/OpenListTeam/OpenList/v4/pkg/buffer"
 	"github.com/OpenListTeam/OpenList/v4/pkg/http_range"
 	"github.com/OpenListTeam/OpenList/v4/pkg/pool"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
@@ -32,31 +33,32 @@ func GetRangeReaderFromLink(size int64, link *model.Link) (model.RangeReaderIF, 
 		down := net.NewDownloader(func(d *net.Downloader) {
 			d.Concurrency = link.Concurrency
 			d.PartSize = link.PartSize
-		})
-		var rangeReader RangeReaderFunc = func(ctx context.Context, httpRange http_range.Range) (io.ReadCloser, error) {
-			var req *net.HttpRequestParams
-			if link.RangeReader != nil {
-				req = &net.HttpRequestParams{
-					Range: httpRange,
-					Size:  size,
+			d.HttpClient = func(ctx context.Context, params *net.HttpRequestParams) (*http.Response, error) {
+				if ServerDownloadLimit == nil {
+					return net.DefaultHttpRequestFunc(ctx, params)
 				}
-			} else {
-				requestHeader, _ := ctx.Value(conf.RequestHeaderKey).(http.Header)
-				header := net.ProcessHeader(requestHeader, link.Header)
-				req = &net.HttpRequestParams{
-					Range:     httpRange,
-					Size:      size,
-					URL:       link.URL,
-					HeaderRef: header,
+				resp, err := net.DefaultHttpRequestFunc(ctx, params)
+				if err == nil && resp.Body != nil {
+					resp.Body = &RateLimitReader{
+						Ctx:     ctx,
+						Reader:  resp.Body,
+						Limiter: ServerDownloadLimit,
+					}
 				}
+				return resp, err
 			}
-			return down.Download(ctx, req)
+		})
+		rangeReader := func(ctx context.Context, httpRange http_range.Range) (io.ReadCloser, error) {
+			requestHeader, _ := ctx.Value(conf.RequestHeaderKey).(http.Header)
+			header := net.ProcessHeader(requestHeader, link.Header)
+			return down.Download(ctx, &net.HttpRequestParams{
+				Range:     httpRange,
+				Size:      size,
+				URL:       link.URL,
+				HeaderRef: header,
+			})
 		}
-		if link.RangeReader != nil {
-			down.HttpClient = net.GetRangeReaderHttpRequestFunc(link.RangeReader)
-			return rangeReader, nil
-		}
-		return RateLimitRangeReaderFunc(rangeReader), nil
+		return RangeReaderFunc(rangeReader), nil
 	}
 
 	if link.RangeReader != nil {
@@ -81,7 +83,15 @@ func GetRangeReaderFromLink(size int64, link *model.Link) (model.RangeReaderIF, 
 			}
 			return nil, fmt.Errorf("http request failure, err:%w", err)
 		}
-		if httpRange.Start == 0 && (httpRange.Length == -1 || httpRange.Length == size) || response.StatusCode == http.StatusPartialContent ||
+		if ServerDownloadLimit != nil {
+			response.Body = &RateLimitReader{
+				Ctx:     ctx,
+				Reader:  response.Body,
+				Limiter: ServerDownloadLimit,
+			}
+		}
+		if httpRange.Start == 0 && httpRange.Length == size ||
+			response.StatusCode == http.StatusPartialContent ||
 			checkContentRange(&response.Header, httpRange.Start) {
 			return response.Body, nil
 		} else if response.StatusCode == http.StatusOK {
@@ -94,7 +104,7 @@ func GetRangeReaderFromLink(size int64, link *model.Link) (model.RangeReaderIF, 
 		}
 		return response.Body, nil
 	}
-	return RateLimitRangeReaderFunc(rangeReader), nil
+	return RangeReaderFunc(rangeReader), nil
 }
 
 // RangeReaderIF.RangeRead返回的io.ReadCloser保留file的签名。

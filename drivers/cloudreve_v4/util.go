@@ -16,6 +16,7 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/drivers/base"
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
 	"github.com/OpenListTeam/OpenList/v4/internal/driver"
+	"github.com/OpenListTeam/OpenList/v4/internal/errs"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/internal/op"
 	"github.com/OpenListTeam/OpenList/v4/internal/setting"
@@ -447,7 +448,9 @@ func (d *CloudreveV4) upRemote(ctx context.Context, file model.FileStreamer, u F
 					return errors.New(up.Msg)
 				}
 				return nil
-			}, retry.Attempts(3),
+			},
+			retry.Context(ctx),
+			retry.Attempts(3),
 			retry.DelayType(retry.BackOffDelay),
 			retry.Delay(time.Second),
 		)
@@ -508,7 +511,9 @@ func (d *CloudreveV4) upOneDrive(ctx context.Context, file model.FileStreamer, u
 				default:
 					return nil
 				}
-			}, retry.Attempts(3),
+			},
+			retry.Context(ctx),
+			retry.Attempts(3),
 			retry.DelayType(retry.BackOffDelay),
 			retry.Delay(time.Second),
 		)
@@ -556,6 +561,9 @@ func (d *CloudreveV4) upS3(ctx context.Context, file model.FileStreamer, u FileU
 				}
 				req.ContentLength = byteSize
 				req.Header.Set("User-Agent", d.getUA())
+				if s3Type == "ks3" {
+					req.Header.Set("Content-Type", "application/octet-stream")
+				}
 				res, err := base.HttpClient.Do(req)
 				if err != nil {
 					return err
@@ -572,6 +580,7 @@ func (d *CloudreveV4) upS3(ctx context.Context, file model.FileStreamer, u FileU
 					return nil
 				}
 			},
+			retry.Context(ctx),
 			retry.Attempts(3),
 			retry.DelayType(retry.BackOffDelay),
 			retry.Delay(time.Second),
@@ -604,7 +613,11 @@ func (d *CloudreveV4) upS3(ctx context.Context, file model.FileStreamer, u FileU
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/xml")
+	if s3Type == "ks3" {
+		req.Header.Set("Content-Type", "application/octet-stream")
+	} else {
+		req.Header.Set("Content-Type", "application/xml")
+	}
 	req.Header.Set("User-Agent", d.getUA())
 	res, err := base.HttpClient.Do(req)
 	if err != nil {
@@ -617,7 +630,5 @@ func (d *CloudreveV4) upS3(ctx context.Context, file model.FileStreamer, u FileU
 	}
 
 	// 上传成功发送回调请求
-	return d.request(http.MethodGet, "/callback/s3/"+u.SessionID+"/"+u.CallbackSecret, func(req *resty.Request) {
-		req.SetBody("{}")
-	}, nil)
+	return d.request(http.MethodGet, "/callback/"+s3Type+"/"+u.SessionID+"/"+u.CallbackSecret, nil, nil)
 }

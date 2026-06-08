@@ -31,7 +31,7 @@ func Down(verifyFunc func(string, string) error) func(c *gin.Context) {
 				return
 			}
 		}
-		common.GinWithValue(c, conf.MetaKey, meta)
+		common.GinAppendValues(c, conf.MetaKey, meta)
 		// verify sign
 		if needSign(meta, rawPath) {
 			s := c.Query("sign")

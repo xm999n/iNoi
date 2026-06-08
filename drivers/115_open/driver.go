@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	stdpath "path"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -23,8 +25,9 @@ import (
 type Open115 struct {
 	model.Storage
 	Addition
-	client  *sdk.Client
-	limiter *rate.Limiter
+	client     *sdk.Client
+	limiter    *rate.Limiter
+	parentPath string
 }
 
 func (d *Open115) Config() driver.Config {
@@ -53,6 +56,34 @@ func (d *Open115) Init(ctx context.Context) error {
 	if d.Addition.LimitRate > 0 {
 		d.limiter = rate.NewLimiter(rate.Limit(d.Addition.LimitRate), 1)
 	}
+	if d.PageSize <= 0 {
+		d.PageSize = 200
+	} else if d.PageSize > 1150 {
+		d.PageSize = 1150
+	}
+
+	// add parent path
+	d.parentPath = "/"
+	if d.GetRootId() != d.Config().DefaultRoot {
+		folderInfo, err := d.client.GetFolderInfo(ctx, d.GetRootId())
+		if err != nil {
+			return err
+		}
+
+		if folderInfo.FileID != d.Config().DefaultRoot {
+			d.parentPath = stdpath.Join(d.parentPath, folderInfo.FileName)
+		}
+
+		parentPaths := folderInfo.Paths
+		slices.Reverse(parentPaths)
+		for _, parentPathInfo := range parentPaths {
+			if parentPathInfo.FileID == d.Config().DefaultRoot {
+				d.parentPath = stdpath.Join("/", d.parentPath)
+			} else {
+				d.parentPath = stdpath.Join("/", parentPathInfo.FileName, d.parentPath)
+			}
+		}
+	}
 	return nil
 }
 
@@ -69,7 +100,7 @@ func (d *Open115) Drop(ctx context.Context) error {
 
 func (d *Open115) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([]model.Obj, error) {
 	var res []model.Obj
-	pageSize := int64(200)
+	pageSize := int64(d.PageSize)
 	offset := int64(0)
 	for {
 		if err := d.WaitLimit(ctx); err != nil {
@@ -170,7 +201,7 @@ func (d *Open115) Rename(ctx context.Context, srcObj model.Obj, newName string) 
 	}
 	_, err := d.client.UpdateFile(ctx, &sdk.UpdateFileReq{
 		FileID:  srcObj.GetID(),
-		FileNma: newName,
+		FileName: newName,
 	})
 	if err != nil {
 		return nil, err

@@ -34,6 +34,13 @@ func initSettings() {
 	}
 	settingMap := map[string]*model.SettingItem{}
 	for _, v := range settings {
+		if v.Key == "" {
+			err := db.DeleteSettingItemByKey(v.Key)
+			if err != nil {
+				utils.Log.Errorf("failed delete setting with empty key: %+v", err)
+			}
+			continue
+		}
 		if !isActive(v.Key) && v.Flag != model.DEPRECATED {
 			v.Flag = model.DEPRECATED
 			err = op.SaveSettingItem(&v)
@@ -135,7 +142,8 @@ func InitialSettings() []model.SettingItem {
 		{Key: conf.SharePreviewDownloadByDefault, Value: "true", Type: conf.TypeBool, Group: model.PREVIEW},
 		{Key: conf.SharePreviewArchivesByDefault, Value: "false", Type: conf.TypeBool, Group: model.PREVIEW},
 		{Key: conf.ReadMeAutoRender, Value: "true", Type: conf.TypeBool, Group: model.PREVIEW},
-		{Key: conf.FilterReadMeScripts, Value: "true", Type: conf.TypeBool, Group: model.PREVIEW},
+		{Key: conf.FilterReadMeScripts, Value: "true", Type: conf.TypeBool, Group: model.PREVIEW}, // frontend
+		{Key: conf.NonEFSZipEncoding, Value: "IBM437", Type: conf.TypeString, Group: model.PREVIEW},
 		// global settings
 		{Key: conf.HideFiles, Value: "/\\/README.md/i\n/\\/Thumbs.db/i\n/\\/.DS_Store/i\n/\\/@eaDir/i\n/\\/#recycle/i", Type: conf.TypeText, Group: model.GLOBAL},
 		{Key: "package_download", Value: "true", Type: conf.TypeBool, Group: model.GLOBAL},
@@ -143,7 +151,8 @@ func InitialSettings() []model.SettingItem {
 		{Key: conf.CustomizeBody, Type: conf.TypeText, Group: model.GLOBAL, Flag: model.PRIVATE},
 		{Key: conf.LinkExpiration, Value: "0", Type: conf.TypeNumber, Group: model.GLOBAL, Flag: model.PRIVATE},
 		{Key: conf.SignAll, Value: "true", Type: conf.TypeBool, Group: model.GLOBAL, Flag: model.PRIVATE},
-		{Key: conf.PrivacyRegs, Value: `(?:(?:\d|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])\.){3}(?:\d|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])
+		{
+			Key: conf.PrivacyRegs, Value: `(?:(?:\d|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])\.){3}(?:\d|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])
 ([[:xdigit:]]{1,4}(?::[[:xdigit:]]{1,4}){7}|::|:(?::[[:xdigit:]]{1,4}){1,6}|[[:xdigit:]]{1,4}:(?::[[:xdigit:]]{1,4}){1,5}|(?:[[:xdigit:]]{1,4}:){2}(?::[[:xdigit:]]{1,4}){1,4}|(?:[[:xdigit:]]{1,4}:){3}(?::[[:xdigit:]]{1,4}){1,3}|(?:[[:xdigit:]]{1,4}:){4}(?::[[:xdigit:]]{1,4}){1,2}|(?:[[:xdigit:]]{1,4}:){5}:[[:xdigit:]]{1,4}|(?:[[:xdigit:]]{1,4}:){1,6}:)
 (?U)access_token=(.*)&`,
 			Type: conf.TypeText, Group: model.GLOBAL, Flag: model.PRIVATE,},
@@ -184,6 +193,7 @@ func InitialSettings() []model.SettingItem {
 		// ldap settings
 		{Key: conf.LdapLoginEnabled, Value: "false", Type: conf.TypeBool, Group: model.LDAP, Flag: model.PUBLIC},
 		{Key: conf.LdapServer, Value: "", Type: conf.TypeString, Group: model.LDAP, Flag: model.PRIVATE},
+		{Key: conf.LdapSkipTlsVerify, Value: "false", Type: conf.TypeBool, Group: model.LDAP, Flag: model.PRIVATE},
 		{Key: conf.LdapManagerDN, Value: "", Type: conf.TypeString, Group: model.LDAP, Flag: model.PRIVATE},
 		{Key: conf.LdapManagerPassword, Value: "", Type: conf.TypeString, Group: model.LDAP, Flag: model.PRIVATE},
 		{Key: conf.LdapUserSearchBase, Value: "", Type: conf.TypeString, Group: model.LDAP, Flag: model.PRIVATE},

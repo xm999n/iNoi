@@ -3,6 +3,7 @@ package local
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -14,7 +15,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/KarpelesLab/reflink"
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
+	"github.com/OpenListTeam/OpenList/v4/internal/errs"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/disintegration/imaging"
@@ -148,7 +151,7 @@ func (d *Local) getThumb(file model.Obj) (*bytes.Buffer, *string, error) {
 		return nil, nil, err
 	}
 	if d.ThumbCacheFolder != "" {
-		err = os.WriteFile(filepath.Join(d.ThumbCacheFolder, thumbName), buf.Bytes(), 0666)
+		err = os.WriteFile(filepath.Join(d.ThumbCacheFolder, thumbName), buf.Bytes(), 0o666)
 		if err != nil {
 			return nil, nil, err
 		}

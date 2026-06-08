@@ -385,3 +385,14 @@ func (d *Pan123) getUserInfo(ctx context.Context) (*UserInfoResp, error) {
 	}
 	return &resp, nil
 }
+
+func (d *Pan123) getUserInfo(ctx context.Context) (*UserInfoResp, error) {
+	var resp UserInfoResp
+	_, err := d.Request(UserInfo, http.MethodGet, func(req *resty.Request) {
+		req.SetContext(ctx)
+	}, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}

@@ -1,21 +1,28 @@
 module github.com/OpenListTeam/OpenList/v4
 
-go 1.23.4
+go 1.24.0
+
+toolchain go1.24.13
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.18.1
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.2
+	github.com/KarpelesLab/reflink v1.0.2
+	github.com/KirCute/zip v1.0.1
 	github.com/OpenListTeam/go-cache v0.1.0
 	github.com/OpenListTeam/sftpd-openlist v1.0.1
-	github.com/OpenListTeam/tache v0.2.0
+	github.com/OpenListTeam/tache v0.2.2
 	github.com/OpenListTeam/times v0.1.0
 	github.com/OpenListTeam/wopan-sdk-go v0.1.5
 	github.com/ProtonMail/go-crypto v1.3.0
 	github.com/SheltonZhu/115driver v1.1.1
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
+	github.com/antchfx/htmlquery v1.3.5
+	github.com/antchfx/xpath v1.3.5
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/aws/aws-sdk-go v1.55.7
 	github.com/blevesearch/bleve/v2 v2.5.2
+	github.com/bmatcuk/doublestar/v4 v4.9.1
 	github.com/caarlos0/env/v9 v9.0.0
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.6
@@ -30,9 +37,10 @@ require (
 	github.com/dustinxie/ecc v0.0.0-20210511000915-959544187564
 	github.com/fclairamb/ftpserverlib v0.26.1-0.20250709223522-4a925d79caf6
 	github.com/foxxorcat/mopan-sdk-go v0.1.6
-	github.com/foxxorcat/weiyun-sdk-go v0.1.3
+	github.com/foxxorcat/weiyun-sdk-go v0.1.4
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.10.1
+	github.com/glebarez/sqlite v1.11.0
 	github.com/go-resty/resty/v2 v2.16.5
 	github.com/go-webauthn/webauthn v0.13.4
 	github.com/golang-jwt/jwt/v4 v4.5.2
@@ -58,21 +66,20 @@ require (
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d
 	github.com/shirou/gopsutil/v4 v4.25.5
 	github.com/sirupsen/logrus v1.9.3
-	github.com/spf13/afero v1.14.0
-	github.com/spf13/cobra v1.9.1
-	github.com/stretchr/testify v1.10.0
+	github.com/spf13/afero v1.15.0
+	github.com/spf13/cobra v1.10.2
+	github.com/stretchr/testify v1.11.1
 	github.com/t3rm1n4l/go-mega v0.0.0-20241213151442-a19cff0ec7b5
 	github.com/tchap/go-patricia/v2 v2.3.3
 	github.com/u2takey/ffmpeg-go v0.5.0
 	github.com/upyun/go-sdk/v3 v3.0.4
 	github.com/winfsp/cgofuse v1.6.0
-	github.com/yeka/zip v0.0.0-20231116150916-03d6312748a9
 	github.com/zzzhr1990/go-common-entity v0.0.0-20250202070650-1a200048f0d3
-	golang.org/x/crypto v0.40.0
+	golang.org/x/crypto v0.46.0
 	golang.org/x/image v0.29.0
-	golang.org/x/net v0.42.0
-	golang.org/x/oauth2 v0.30.0
-	golang.org/x/time v0.12.0
+	golang.org/x/net v0.48.0
+	golang.org/x/oauth2 v0.34.0
+	golang.org/x/time v0.14.0
 	google.golang.org/appengine v1.6.8
 	gopkg.in/ldap.v3 v3.1.0
 	gorm.io/driver/mysql v1.5.7
@@ -82,7 +89,6 @@ require (
 )
 
 require (
-	cloud.google.com/go/compute/metadata v0.7.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.1 // indirect
 	github.com/ProtonMail/bcrypt v0.0.0-20211005172633-e235017c1baf // indirect
 	github.com/ProtonMail/gluon v0.17.1-0.20230724134000-308be39be96e // indirect
@@ -124,10 +130,14 @@ require (
 	go.uber.org/mock v0.5.0 // indirect
 	golang.org/x/mod v0.27.0 // indirect
 	gopkg.in/go-jose/go-jose.v2 v2.6.3 // indirect
+	modernc.org/libc v1.22.5 // indirect
+	modernc.org/mathutil v1.5.0 // indirect
+	modernc.org/memory v1.5.0 // indirect
+	modernc.org/sqlite v1.23.1 // indirect
 )
 
 require (
-	github.com/OpenListTeam/115-sdk-go v0.2.2
+	github.com/OpenListTeam/115-sdk-go v0.2.3
 	github.com/STARRY-S/zip v0.2.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/blevesearch/go-faiss v1.0.25 // indirect
@@ -156,8 +166,7 @@ require (
 	github.com/sorairolake/lzip-go v0.3.5 // indirect
 	github.com/taruti/bytepool v0.0.0-20160310082835-5e3a9ea56543 // indirect
 	github.com/ulikunitz/xz v0.5.12 // indirect
-	github.com/yuin/goldmark v1.7.13
-	go4.org v0.0.0-20230225012048-214862532bf5
+	go4.org v0.0.0-20260112195520-a5071408f32f
 	resty.dev/v3 v3.0.0-beta.2 // indirect
 )
 
@@ -258,7 +267,6 @@ require (
 	github.com/multiformats/go-multihash v0.2.3 // indirect
 	github.com/multiformats/go-multistream v0.4.1 // indirect
 	github.com/multiformats/go-varint v0.0.7 // indirect
-	github.com/otiai10/copy v1.14.1
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
@@ -274,7 +282,7 @@ require (
 	github.com/shabbyrobe/gocovmerge v0.0.0-20230507112040-c3350d9342df // indirect
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
-	github.com/spf13/pflag v1.0.6 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/tklauser/go-sysconf v0.3.15 // indirect
 	github.com/tklauser/numcpus v0.10.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
@@ -303,3 +311,5 @@ replace github.com/ProtonMail/go-proton-api => github.com/henrybear327/go-proton
 replace github.com/cronokirby/saferith => github.com/Da3zKi7/saferith v0.33.0-fixed
 
 // replace github.com/OpenListTeam/115-sdk-go => ../../OpenListTeam/115-sdk-go
+
+replace github.com/KarpelesLab/reflink => github.com/OpenListTeam/reflink v0.0.0-20260520031008-ed3c0dbe8009

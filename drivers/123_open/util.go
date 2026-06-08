@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/drivers/base"
-	"github.com/OpenListTeam/OpenList/v4/internal/op"
 	"github.com/go-resty/resty/v2"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -40,11 +39,14 @@ var ( // 不同情况下获取的AccessTokenQPS限制不同 如下模块化易�
 )
 
 func (d *Open123) Request(apiInfo *ApiInfo, method string, callback base.ReqCallback, resp interface{}) ([]byte, error) {
-	retryToken := true
 	for {
+		token, err := d.getAccessToken(false)
+		if err != nil {
+			return nil, err
+		}
 		req := base.RestyClient.R()
 		req.SetHeaders(map[string]string{
-			"authorization": "Bearer " + d.AccessToken,
+			"authorization": "Bearer " + token,
 			"platform":      "open_platform",
 			"Content-Type":  "application/json",
 		})
@@ -74,9 +76,9 @@ func (d *Open123) Request(apiInfo *ApiInfo, method string, callback base.ReqCall
 
 		if baseResp.Code == 0 {
 			return body, nil
-		} else if baseResp.Code == 401 && retryToken {
-			retryToken = false
-			if err := d.flushAccessToken(); err != nil {
+		} else if baseResp.Code == 401 {
+			// 强制刷新Token, 有小概率会 race condition 导致多次刷新Token，但不影响正确运行
+			if _, err := d.getAccessToken(true); err != nil {
 				return nil, err
 			}
 		} else if baseResp.Code == 429 {
@@ -121,7 +123,19 @@ func (d *Open123) flushAccessToken() error {
 			op.MustSaveDriverStorage(d)
 		}
 	}
-	return nil
+
+	// 待签名字符串，格式：path-timestamp-rand-uid-privateKey
+	unsignedStr := fmt.Sprintf("%s-%d-%s-%d-%s", objURL.Path, ts, rand, uid, privateKey)
+	md5Hash := md5.Sum([]byte(unsignedStr))
+	// 生成鉴权参数，格式：timestamp-rand-uid-md5hash
+	authKey := fmt.Sprintf("%d-%s-%d-%x", ts, rand, uid, md5Hash)
+
+	// 添加鉴权参数到URL查询参数
+	v := objURL.Query()
+	v.Add("auth_key", authKey)
+	objURL.RawQuery = v.Encode()
+
+	return objURL.String(), nil
 }
 
 func (d *Open123) SignURL(originURL, privateKey string, uid uint64, validDuration time.Duration) (newURL string, err error) {

@@ -179,6 +179,19 @@ func admin(g *gin.RouterGroup) {
 	index.POST("/stop", middlewares.SearchIndex, handles.StopIndex)
 	index.POST("/clear", middlewares.SearchIndex, handles.ClearIndex)
 	index.GET("/progress", middlewares.SearchIndex, handles.GetProgress)
+
+	scan := g.Group("/scan")
+	scan.POST("/start", handles.StartManualScan)
+	scan.POST("/stop", handles.StopManualScan)
+	scan.GET("/progress", handles.GetManualScanProgress)
+}
+
+func fsAndShare(g *gin.RouterGroup) {
+	g.Any("/list", handles.FsListSplit)
+	g.Any("/get", handles.FsGetSplit)
+	a := g.Group("/archive")
+	a.Any("/meta", handles.FsArchiveMetaSplit)
+	a.Any("/list", handles.FsArchiveListSplit)
 }
 
 func fsAndShare(g *gin.RouterGroup) {

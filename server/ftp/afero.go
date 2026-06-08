@@ -122,7 +122,7 @@ func (a *AferoAdapter) GetHandle(name string, flags int, offset int64) (ftpserve
 		return nil, errs.ObjectNotFound
 	}
 	if (flags&os.O_EXCL) != 0 && exists {
-		return nil, errors.New("file already exists")
+		return nil, errs.ObjectAlreadyExists
 	}
 	if (flags & os.O_WRONLY) != 0 {
 		if offset != 0 {
