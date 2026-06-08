@@ -391,35 +391,7 @@ func getStorageVirtualFilesByPath(prefix string, rootCallback func(driver.Driver
 		if !found || p == "" {
 			continue
 		}
-		names := strings.SplitN(strings.TrimPrefix(mountPath[len(prefix):], "/"), "/", 2)
-		idx, ok := set[names[0]]
-		if !ok {
-			set[names[0]] = len(files)
-			obj := &model.Object{
-				Name:     names[0],
-				Size:     0,
-				Modified: v.GetStorage().Modified,
-				IsFolder: true,
-			}
-			if len(names) == 1 {
-				idx = len(files)
-				files = append(files, obj)
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					files[idx] = rootCallback(v, files[idx])
-				}()
-			} else {
-				files = append(files, obj)
-			}
-		} else if len(names) == 1 {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				files[idx] = rootCallback(v, files[idx])
-			}()
-		}
-
+		name, _, found := strings.Cut(strings.TrimPrefix(p, "/"), "/")
 		if idx, ok := set[name]; ok {
 			if !found {
 				files[idx].(*model.Object).Mask = model.Locked | model.Virtual
@@ -458,7 +430,6 @@ func getStorageVirtualFilesByPath(prefix string, rootCallback func(driver.Driver
 	if rootCallback != nil {
 		wg.Wait()
 	}
-	wg.Wait()
 	return files
 }
 
