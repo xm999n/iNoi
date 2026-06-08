@@ -8,6 +8,7 @@ gitCommit=$(git log --pretty=format:"%h" -1)
 frontendRepo="${FRONTEND_REPO:-NecroticGlow/iNoi-Web}"
 localFrontendDir="${INOI_WEB_DIR:-../iNoi-Web}"
 webPackage="${INOI_WEB_DIST_TAR:-../iNoi-Web/compress/dist.tar.gz}"
+webPackageUrl="${INOI_WEB_DIST_URL:-https://github.com/user-attachments/files/28699218/dist.tar.gz}"
 
 githubAuthArgs=""
 if [ -n "$GITHUB_TOKEN" ]; then
@@ -53,8 +54,8 @@ FetchWebPackage() {
     echo "using local frontend package: $webPackage"
     cp "$webPackage" dist.tar.gz
   else
-    echo "downloading frontend package from ${frontendRepo}"
-    curl -fL "https://github.com/${frontendRepo}/releases/latest/download/dist.tar.gz" -o dist.tar.gz
+    echo "downloading frontend package from ${webPackageUrl}"
+    curl -fL "$webPackageUrl" -o dist.tar.gz
   fi
 
   rm -rf dist
