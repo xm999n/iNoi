@@ -11,6 +11,7 @@ import (
 
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
 	"github.com/OpenListTeam/OpenList/v4/internal/errs"
+	hcache "github.com/OpenListTeam/OpenList/v4/internal/hybrid_cache"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/pkg/buffer"
 	"github.com/OpenListTeam/OpenList/v4/pkg/http_range"
@@ -33,6 +34,8 @@ type FileStream struct {
 	peekBuff  *buffer.Reader
 	size      int64
 	oriReader io.Reader // the original reader, used for caching
+	hc        *hcache.HybridCache
+	peek      buffer.SizedReadAtSeeker
 }
 
 func (f *FileStream) GetSize() int64 {
@@ -65,6 +68,7 @@ func (f *FileStream) Close() error {
 		f.peekBuff.Reset()
 		f.peekBuff = nil
 	}
+	f.peek = nil
 
 	var err1, err2 error
 	err1 = f.Closers.Close()
