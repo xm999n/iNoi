@@ -21,7 +21,7 @@ const (
 )
 
 const (
-	StaticHashSalt = "https://github.com/alist-org/alist"
+	StaticHashSalt = "https://github.com/li-peifeng/inoi"
 
 	InvalidUsernameOrPassword = "Invalid username or password"
 	Invalid2FACode            = "Invalid 2FA code"
