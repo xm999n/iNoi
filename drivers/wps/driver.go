@@ -393,10 +393,7 @@ func (d *Wps) GetDetails(ctx context.Context) (*model.StorageDetails, error) {
 			return nil, fmt.Errorf("http error: %d", r.StatusCode())
 		}
 		return &model.StorageDetails{
-			DiskUsage: model.DiskUsage{
-				TotalSpace: resp.Total,
-				UsedSpace:  resp.Used,
-			},
+			DiskUsage: driver.DiskUsageFromUsedAndTotal(uint64(resp.Used), uint64(resp.Total)),
 		}, nil
 	}
 	url := ENDPOINT_BUSINESS + "/3rd/plussvr/compose/v1/u/companies/batch/service-space?comp_ids=" + fmt.Sprint(d.login.CompanyID)
@@ -415,10 +412,7 @@ func (d *Wps) GetDetails(ctx context.Context) (*model.StorageDetails, error) {
 	for _, info := range resp.Info {
 		if info.ID == d.login.CompanyID {
 			return &model.StorageDetails{
-				DiskUsage: model.DiskUsage{
-					TotalSpace: info.SpaceTotal,
-					UsedSpace:  info.SpaceUsed,
-				},
+				DiskUsage: driver.DiskUsageFromUsedAndTotal(uint64(info.SpaceUsed), uint64(info.SpaceTotal)),
 			}, nil
 		}
 	}

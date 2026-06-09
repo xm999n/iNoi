@@ -219,15 +219,6 @@ type UploadServerResp struct {
 }
 
 type QuotaResp struct {
-	Errno     int   `json:"errno"`
-	RequestId int64 `json:"request_id"`
-	Total     int64 `json:"total"`
-	Used      int64 `json:"used"`
-	//FreeSpace      uint64 `json:"free"`
-	//Expire    bool   `json:"expire"`
-}
-
-type QuotaResp struct {
 	Errno     int    `json:"errno"`
 	RequestId int64  `json:"request_id"`
 	Total     uint64 `json:"total"`

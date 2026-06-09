@@ -145,6 +145,10 @@ func GinAppendValues(c *gin.Context, keyAndValue ...any) {
 	)
 }
 
+func GinWithValue(c *gin.Context, key, value any) {
+	GinAppendValues(c, key, value)
+}
+
 func ContentWithValues(ctx context.Context, keyAndValue ...any) context.Context {
 	if len(keyAndValue) < 1 || len(keyAndValue)%2 != 0 {
 		panic("keyAndValue must be an even number of arguments (key, value, ...)")

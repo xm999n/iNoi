@@ -362,10 +362,7 @@ func (d *MoPan) GetDetails(ctx context.Context) (*model.StorageDetails, error) {
 		return nil, err
 	}
 	return &model.StorageDetails{
-		DiskUsage: model.DiskUsage{
-			TotalSpace: int64(quota.Capacity),
-			UsedSpace:  int64(quota.Used),
-		},
+		DiskUsage: driver.DiskUsageFromUsedAndTotal(uint64(quota.Used), uint64(quota.Capacity)),
 	}, nil
 }
 

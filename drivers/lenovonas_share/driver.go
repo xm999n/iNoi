@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	stdpath "path"
 	"strings"
 	"time"
 
@@ -66,9 +67,7 @@ func (d *LenovoNasShare) List(ctx context.Context, dir model.Obj, args model.Lis
 		return nil, err
 	}
 
-	files = append(files, resp.Data.List...)
-
-	return utils.SliceConvert(files, func(src File) (model.Obj, error) {
+	return utils.SliceConvert(resp.Data.List, func(src File) (model.Obj, error) {
 		if src.IsDir() {
 			return src, nil
 		}

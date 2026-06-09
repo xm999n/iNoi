@@ -483,10 +483,7 @@ func (d *DoubaoNew) GetDetails(ctx context.Context) (*model.StorageDetails, erro
 		return nil, err
 	}
 	return &model.StorageDetails{
-		DiskUsage: model.DiskUsage{
-			TotalSpace: data.TotalSizeLimitBytes,
-			UsedSpace:  data.UsedSizeBytes,
-		},
+		DiskUsage: driver.DiskUsageFromUsedAndTotal(uint64(data.UsedSizeBytes), uint64(data.TotalSizeLimitBytes)),
 	}, nil
 }
 

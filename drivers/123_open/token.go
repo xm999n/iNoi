@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	AccessToken = "https://open-api.123pan.com/api/v1/access_token"
+	AccessTokenURL = "https://open-api.123pan.com/api/v1/access_token"
 )
 
 func expiresInToExpiredAt(expiresIn int64) (time.Time, error) {
@@ -105,7 +105,7 @@ func (d *Open123) flushAccessToken() error {
 			"clientSecret": d.ClientSecret,
 		})
 		req.SetResult(&resp)
-		_, err := req.Execute(http.MethodPost, AccessToken)
+		_, err := req.Execute(http.MethodPost, AccessTokenURL)
 		if err != nil {
 			return err
 		}

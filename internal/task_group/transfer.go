@@ -27,15 +27,36 @@ func HookAndRemove(ctx context.Context, dstPath string, payloads ...any) {
 		log.Error(errors.WithMessage(err, "failed get dst storage"))
 		return
 	}
-	_, dstNeedRefresh := dstStorage.(driver.Put)
-	if dstNeedRefresh {
-		op.Cache.DeleteDirectory(dstStorage, dstActualPath)
+	dstNeedHandleHook := setting.GetBool(conf.HandleHookAfterWriting)
+	dstHandleHookLimit := setting.GetFloat(conf.HandleHookRateLimit, .0)
+	var listLimiter *rate.Limiter
+	if dstNeedHandleHook && dstHandleHookLimit > .0 {
+		listLimiter = rate.NewLimiter(rate.Limit(dstHandleHookLimit), 1)
+	}
+	hookedPaths := make(map[string]struct{})
+	handleHook := func(actualPath string) {
+		if _, ok := hookedPaths[actualPath]; ok {
+			return
+		}
+		if listLimiter != nil {
+			_ = listLimiter.Wait(ctx)
+		}
+		files, e := op.List(ctx, dstStorage, actualPath, model.ListArgs{SkipHook: true})
+		if e != nil {
+			log.Errorf("failed handle objs update hook: %v", e)
+		} else {
+			op.HandleObjsUpdateHook(ctx, utils.GetFullPath(dstStorage.GetStorage().MountPath, actualPath), files)
+			hookedPaths[actualPath] = struct{}{}
+		}
+	}
+	if dstNeedHandleHook {
+		handleHook(dstActualPath)
 	}
 	for _, payload := range payloads {
 		switch p := payload.(type) {
-		case DstPathToRefresh:
-			if dstNeedRefresh {
-				op.Cache.DeleteDirectory(dstStorage, string(p))
+		case DstPathToHook:
+			if dstNeedHandleHook {
+				handleHook(string(p))
 			}
 		case SrcPathToRemove:
 			srcStorage, srcActualPath, err := op.GetStorageAndActualPath(string(p))
@@ -77,9 +98,6 @@ func verifyAndRemove(ctx context.Context, srcStorage, dstStorage driver.Driver, 
 		return errors.WithMessagef(err, "failed list src [%s] objs", path.Join(srcStorage.GetStorage().MountPath, srcPath))
 	}
 
-	if refresh {
-		op.Cache.DeleteDirectory(dstStorage, dstObjPath)
-	}
 	hasErr := false
 	for _, obj := range srcObjs {
 		srcSubPath := path.Join(srcPath, obj.GetName())

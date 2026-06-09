@@ -50,8 +50,7 @@ func (d *OnedriveSharelink) Init(ctx context.Context) error {
 	// Initialize cron job to run every hour
 	d.cron = cron.NewCron(time.Hour * 1)
 	d.cron.Do(func() {
-		var err error
-		d.Headers, err = d.getHeaders(ctx)
+		h, err := d.getHeaders(ctx)
 		if err != nil {
 			log.Errorf("%+v", err)
 			return
@@ -60,7 +59,7 @@ func (d *OnedriveSharelink) Init(ctx context.Context) error {
 	})
 
 	// Get initial headers
-	d.Headers, err = d.getHeaders(ctx)
+	h, err := d.getHeaders(ctx)
 	if err != nil {
 		return err
 	}
@@ -95,14 +94,9 @@ func (d *OnedriveSharelink) Link(ctx context.Context, file model.Obj, args model
 	uniqueId = uniqueId[1 : len(uniqueId)-1]
 	url := d.downloadLinkPrefix + uniqueId
 
-	// If the headers are older than 30 minutes, get new headers
-	if d.HeaderTime < time.Now().Unix()-1800 {
-		var err error
-		log.Debug("headers are older than 30 minutes, get new headers")
-		header, err = d.getHeaders(ctx)
-		if err != nil {
-			return nil, err
-		}
+	header, err := d.getValidHeaders(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	return &model.Link{

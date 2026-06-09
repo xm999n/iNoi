@@ -97,7 +97,11 @@ func InitConfig() {
 	}
 
 	if conf.Conf.MaxConcurrency > 0 {
-		net.DefaultConcurrencyLimit = &net.ConcurrencyLimit{Limit: conf.Conf.MaxConcurrency}
+		if conf.Conf.MaxConcurrency > math.MaxInt32 {
+			net.DefaultConcurrencyLimit = &net.ConcurrencyLimit{Limit: math.MaxInt32}
+		} else {
+			net.DefaultConcurrencyLimit = &net.ConcurrencyLimit{Limit: uint32(conf.Conf.MaxConcurrency)}
+		}
 	}
 	if conf.Conf.MaxBufferLimit < 0 {
 		m, _ := mem.VirtualMemory()

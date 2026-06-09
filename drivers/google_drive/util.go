@@ -49,7 +49,7 @@ type googleDriveServiceAccount struct {
 }
 
 func (d *GoogleDrive) refreshToken() error {
-	// 使用在线API刷新Token，无需ClientID和ClientSecret
+	// 浣跨敤鍦ㄧ嚎API鍒锋柊Token锛屾棤闇€ClientID鍜孋lientSecret
 	if d.UseOnlineAPI && len(d.APIAddress) > 0 {
 		u := d.APIAddress
 		var resp struct {
@@ -79,11 +79,11 @@ func (d *GoogleDrive) refreshToken() error {
 		op.MustSaveDriverStorage(d)
 		return nil
 	}
-	// 使用本地客户端的情况下检查是否为空
+	// 浣跨敤鏈湴瀹㈡埛绔殑鎯呭喌涓嬫鏌ユ槸鍚︿负绌?
 	if d.ClientID == "" || d.ClientSecret == "" {
 		return fmt.Errorf("empty ClientID or ClientSecret")
 	}
-	// 走原有的刷新逻辑
+	// 璧板師鏈夌殑鍒锋柊閫昏緫
 
 	// googleDriveServiceAccountFile gdsaFile
 	gdsaFile, gdsaFileErr := os.Stat(d.RefreshToken)
@@ -297,6 +297,36 @@ func (d *GoogleDrive) getFiles(id string) ([]File, error) {
 		res = append(res, resp.Files...)
 	}
 	return res, nil
+}
+
+func (d *GoogleDrive) getTargetFileInfo(targetId string) (File, error) {
+	var targetFile File
+	url := fmt.Sprintf("https://www.googleapis.com/drive/v3/files/%s", targetId)
+	query := map[string]string{
+		"fields": FileInfoFields,
+	}
+	_, err := d.request(url, http.MethodGet, func(req *resty.Request) {
+		req.SetQueryParams(query)
+	}, &targetFile)
+	if err != nil {
+		return File{}, err
+	}
+	return targetFile, nil
+}
+
+func (d *GoogleDrive) batchGetTargetFilesInfo(targetIds []string) map[string]File {
+	if len(targetIds) == 0 {
+		return make(map[string]File)
+	}
+
+	result := make(map[string]File)
+	for _, targetId := range targetIds {
+		file, err := d.getTargetFileInfo(targetId)
+		if err == nil {
+			result[targetId] = file
+		}
+	}
+	return result
 }
 
 func (d *GoogleDrive) chunkUpload(ctx context.Context, file model.FileStreamer, url string, up driver.UpdateProgress) error {

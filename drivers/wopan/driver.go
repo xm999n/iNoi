@@ -176,10 +176,7 @@ func (d *Wopan) GetDetails(ctx context.Context) (*model.StorageDetails, error) {
 		return nil, err
 	}
 	return &model.StorageDetails{
-		DiskUsage: model.DiskUsage{
-			TotalSpace: total,
-			UsedSpace:  quota.UsageInfo.ByteUsedSize,
-		},
+		DiskUsage: driver.DiskUsageFromUsedAndTotal(uint64(quota.UsageInfo.ByteUsedSize), uint64(total)),
 	}, nil
 }
 

@@ -201,10 +201,7 @@ func (d *Mega) GetDetails(ctx context.Context) (*model.StorageDetails, error) {
 		return nil, err
 	}
 	return &model.StorageDetails{
-		DiskUsage: model.DiskUsage{
-			TotalSpace: int64(quota.Mstrg),
-			UsedSpace:  int64(quota.Cstrg),
-		},
+		DiskUsage: driver.DiskUsageFromUsedAndTotal(uint64(quota.Cstrg), uint64(quota.Mstrg)),
 	}, nil
 }
 

@@ -562,10 +562,7 @@ func (xc *XunLeiBrowserCommon) GetDetails(ctx context.Context) (*model.StorageDe
 	}
 
 	return &model.StorageDetails{
-		DiskUsage: model.DiskUsage{
-			TotalSpace: total,
-			UsedSpace:  used,
-		},
+		DiskUsage: driver.DiskUsageFromUsedAndTotal(uint64(used), uint64(total)),
 	}, nil
 }
 

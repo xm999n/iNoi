@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/drivers/base"
+	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/go-resty/resty/v2"
 	jsoniter "github.com/json-iterator/go"
@@ -24,30 +25,36 @@ import (
 // do others that not defined in Driver interface
 
 const (
-	ApiBase          = "https://www.123pan.com"
-	Api              = ApiBase + "/api"
-	AApi             = ApiBase + "/a/api"
-	BApi             = ApiBase + "/b/api"
-	LoginApi         = "https://login.123pan.com/api"
-	MainApi          = BApi
-	SignInAndroid    = BApi + "/user/sign_in"
-	SignInWeb        = LoginApi + "/user/sign_in"
-	Logout           = MainApi + "/user/logout"
-	UserInfo         = BApi + "/user/info"
-	FileList         = Api + "/file/list/new"
-	DownloadInfo     = AApi + "/file/download_info"
-	Mkdir            = AApi + "/file/upload_request"
-	Move             = MainApi + "/file/mod_pid"
-	Rename           = MainApi + "/file/rename"
-	Trash            = AApi + "/file/trash"
-	UploadRequest    = BApi + "/file/upload_request"
-	UploadComplete   = BApi + "/file/upload_complete"
-	S3PreSignedUrls  = BApi + "/file/s3_repare_upload_parts_batch"
-	S3Auth           = BApi + "/file/s3_upload_object/auth"
-	UploadCompleteV2 = BApi + "/file/upload_complete/v2"
-	S3Complete       = BApi + "/file/s3_complete_multipart_upload"
+	ApiBase           = "https://www.123pan.com"
+	Api               = ApiBase + "/api"
+	AApi              = ApiBase + "/a/api"
+	BApi              = ApiBase + "/b/api"
+	LoginApi          = "https://login.123pan.com/api"
+	MainApi           = BApi
+	SignInAndroid     = BApi + "/user/sign_in"
+	SignInWeb         = LoginApi + "/user/sign_in"
+	Logout            = MainApi + "/user/logout"
+	UserInfo          = BApi + "/user/info"
+	FileList          = Api + "/file/list/new"
+	DownloadInfo      = AApi + "/file/download_info"
+	Mkdir             = AApi + "/file/upload_request"
+	Move              = MainApi + "/file/mod_pid"
+	Rename            = MainApi + "/file/rename"
+	Trash             = AApi + "/file/trash"
+	UploadRequest     = BApi + "/file/upload_request"
+	UploadComplete    = BApi + "/file/upload_complete"
+	S3PreSignedUrls   = BApi + "/file/s3_repare_upload_parts_batch"
+	S3Auth            = BApi + "/file/s3_upload_object/auth"
+	UploadCompleteV2  = BApi + "/file/upload_complete/v2"
+	S3Complete        = BApi + "/file/s3_complete_multipart_upload"
+	OfflineResolve    = MainApi + "/v2/offline_download/task/resolve"
+	OfflineSubmit     = MainApi + "/v2/offline_download/task/submit"
+	OfflineTaskList   = MainApi + "/offline_download/task/list"
+	OfflineTaskDelete = MainApi + "/offline_download/task/delete"
 	// AuthKeySalt      = "8-8D$sL8gPjom7bk#cY"
 )
+
+var ErrOfflineTaskNotFound = errors.New("offline task not found")
 
 const (
 	androidAppVersion   = "61"
@@ -104,18 +111,18 @@ func useAndroidProtocol() bool {
 
 func androidHeaders(authorization string) map[string]string {
 	return map[string]string{
-		"content-type":   "application/json",
-		"authorization":  authorization,
-		"LoginUuid":      androidLoginUUID,
-		"user-agent":     fmt.Sprintf("123pan/v%s(%s;%s)", androidXAppVersion, androidOSVersion, androidDeviceBrand),
+		"content-type":    "application/json",
+		"authorization":   authorization,
+		"LoginUuid":       androidLoginUUID,
+		"user-agent":      fmt.Sprintf("123pan/v%s(%s;%s)", androidXAppVersion, androidOSVersion, androidDeviceBrand),
 		"accept-encoding": "gzip",
-		"osversion":      androidOSVersion,
-		"platform":       androidPlatformName,
-		"devicetype":     androidDeviceType,
-		"devicename":     androidDeviceBrand,
-		"host":           "www.123pan.com",
-		"app-version":    androidAppVersion,
-		"x-app-version":  androidXAppVersion,
+		"osversion":       androidOSVersion,
+		"platform":        androidPlatformName,
+		"devicetype":      androidDeviceType,
+		"devicename":      androidDeviceBrand,
+		"host":            "www.123pan.com",
+		"app-version":     androidAppVersion,
+		"x-app-version":   androidXAppVersion,
 	}
 }
 
@@ -330,6 +337,115 @@ do:
 	return body, nil
 }
 
+func (d *Pan123) OfflineDownload(ctx context.Context, uri string, dstDir model.Obj) (int64, error) {
+	var resolveResp offlineResolveResp
+	_, err := d.Request(OfflineResolve, http.MethodPost, func(req *resty.Request) {
+		req.SetContext(ctx).SetBody(base.Json{
+			"urls": uri,
+		})
+	}, &resolveResp)
+	if err != nil {
+		return 0, err
+	}
+	if len(resolveResp.Data.List) == 0 {
+		return 0, fmt.Errorf("offline resolve failed: empty response")
+	}
+	if resolveResp.Data.List[0].Result != 0 {
+		msg := resolveResp.Data.List[0].ErrMsg
+		if msg == "" {
+			msg = "offline resolve failed"
+		}
+		return 0, fmt.Errorf("%s", msg)
+	}
+	resourceID := resolveResp.Data.List[0].ID
+	if resourceID == 0 {
+		return 0, fmt.Errorf("offline resolve failed: empty resource id")
+	}
+	selectFileIDs := make([]int64, 0, len(resolveResp.Data.List[0].Files))
+	for _, f := range resolveResp.Data.List[0].Files {
+		if f.ID > 0 {
+			selectFileIDs = append(selectFileIDs, f.ID)
+		}
+	}
+	if len(selectFileIDs) == 0 {
+		return 0, fmt.Errorf("offline resolve failed: empty file list")
+	}
+	uploadDir, err := strconv.ParseInt(dstDir.GetID(), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid destination dir id: %s", dstDir.GetID())
+	}
+
+	var submitResp offlineSubmitResp
+	_, err = d.Request(OfflineSubmit, http.MethodPost, func(req *resty.Request) {
+		req.SetContext(ctx).SetBody(base.Json{
+			"resource_list": []base.Json{
+				{
+					"resource_id":    resourceID,
+					"select_file_id": selectFileIDs,
+				},
+			},
+			"upload_dir": uploadDir,
+		})
+	}, &submitResp)
+	if err != nil {
+		return 0, err
+	}
+	if len(submitResp.Data.TaskList) == 0 {
+		return 0, fmt.Errorf("offline submit failed: empty task list")
+	}
+	if submitResp.Data.TaskList[0].Result != 0 {
+		return 0, fmt.Errorf("offline submit failed")
+	}
+	if submitResp.Data.TaskList[0].TaskID == 0 {
+		return 0, fmt.Errorf("offline submit failed: empty task id")
+	}
+	return submitResp.Data.TaskList[0].TaskID, nil
+}
+
+func (d *Pan123) GetOfflineTask(ctx context.Context, taskID int64) (*offlineTask, error) {
+	if taskID == 0 {
+		return nil, fmt.Errorf("invalid task id")
+	}
+	page := 1
+	pageSize := 100
+	statusArr := []int{0, 1, 2, 3}
+	for {
+		var listResp offlineTaskListResp
+		_, err := d.Request(OfflineTaskList, http.MethodPost, func(req *resty.Request) {
+			req.SetContext(ctx).SetBody(base.Json{
+				"current_page": page,
+				"page_size":    pageSize,
+				"status_arr":   statusArr,
+			})
+		}, &listResp)
+		if err != nil {
+			return nil, err
+		}
+		for i := range listResp.Data.List {
+			if listResp.Data.List[i].TaskID == taskID {
+				return &listResp.Data.List[i], nil
+			}
+		}
+		if len(listResp.Data.List) == 0 || page*pageSize >= listResp.Data.Total {
+			break
+		}
+		page++
+	}
+	return nil, ErrOfflineTaskNotFound
+}
+
+func (d *Pan123) DeleteOfflineTasks(ctx context.Context, taskIDs []int64) error {
+	if len(taskIDs) == 0 {
+		return nil
+	}
+	_, err := d.Request(OfflineTaskDelete, http.MethodPost, func(req *resty.Request) {
+		req.SetContext(ctx).SetBody(base.Json{
+			"task_ids": taskIDs,
+		})
+	}, nil)
+	return err
+}
+
 func (d *Pan123) getFiles(ctx context.Context, parentId string, name string) ([]File, error) {
 	page := 1
 	total := 0
@@ -373,17 +489,6 @@ func (d *Pan123) getFiles(ctx context.Context, parentId string, name string) ([]
 		log.Warnf("incorrect file count from remote at %s: expected %d, got %d", name, total, len(res))
 	}
 	return res, nil
-}
-
-func (d *Pan123) getUserInfo(ctx context.Context) (*UserInfoResp, error) {
-	var resp UserInfoResp
-	_, err := d.Request(UserInfo, http.MethodGet, func(req *resty.Request) {
-		req.SetContext(ctx)
-	}, &resp)
-	if err != nil {
-		return nil, err
-	}
-	return &resp, nil
 }
 
 func (d *Pan123) getUserInfo(ctx context.Context) (*UserInfoResp, error) {

@@ -836,7 +836,7 @@ func (d *Yun139) Put(ctx context.Context, dstDir model.Obj, stream model.FileStr
 				"fileCount":    1,
 				"manualRename": 2,
 				"operation":    0,
-				"path":         path.Join(dstDir.GetPath(), dstDir.GetID()),
+				"path":         uploadPath,
 				"seqNo":        random.String(32), // 序列号不能为空
 				"totalSize":    reportSize,
 				"uploadContentList": []base.Json{{

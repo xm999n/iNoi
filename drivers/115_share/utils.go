@@ -80,7 +80,7 @@ func transFunc(sf driver115.ShareFile) (model.Obj, error) {
 		FileName: string(sf.FileName),
 		isDir:    isDir,
 		FileID:   fileID,
-		ThumbURL: sf.ThumbURL,
+		ThumbURL: "",
 	}, nil
 }
 

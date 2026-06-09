@@ -61,24 +61,16 @@ func FsStream(c *gin.Context) {
 	}
 	if !overwrite {
 		if res, _ := fs.Get(c.Request.Context(), path, &fs.GetArgs{NoLog: true}); res != nil {
-			common.ErrorStrResp(c, "文件已存在", 403)
+			common.ErrorStrResp(c, "file exists", 403)
 			return
 		}
 	}
 	dir, name := stdpath.Split(path)
-	// 如果请求头 Content-Length 和 X-File-Size 都没有，则 size=-1，表示未知大小的流式上传
-	size := c.Request.ContentLength
-	if size < 0 {
-		sizeStr := c.GetHeader("X-File-Size")
-		if sizeStr != "" {
-			size, err = strconv.ParseInt(sizeStr, 10, 64)
-			if err != nil {
-				common.ErrorResp(c, err, 400)
-				return
-			}
-		}
+	if shouldIgnoreSystemFile(name) {
+		common.ErrorStrResp(c, errs.IgnoredSystemFile.Error(), 403)
+		return
 	}
-	// 如果请求头 Content-Length 和 X-File-Size 都没有，则 size=-1，表示未知大小的流式上传
+	// 濡傛灉璇锋眰澶?Content-Length 鍜?X-File-Size 閮芥病鏈夛紝鍒?size=-1锛岃〃绀烘湭鐭ュぇ灏忕殑娴佸紡涓婁紶
 	size := c.Request.ContentLength
 	if size < 0 {
 		sizeStr := c.GetHeader("X-File-Size")
@@ -157,7 +149,7 @@ func FsForm(c *gin.Context) {
 	}
 	if !overwrite {
 		if res, _ := fs.Get(c.Request.Context(), path, &fs.GetArgs{NoLog: true}); res != nil {
-			common.ErrorStrResp(c, "文件已存在", 403)
+			common.ErrorStrResp(c, "file exists", 403)
 			return
 		}
 	}
@@ -167,7 +159,7 @@ func FsForm(c *gin.Context) {
 		return
 	}
 	if storage.Config().NoUpload {
-		common.ErrorStrResp(c, "当前存储不支持上传", 405)
+		common.ErrorStrResp(c, "Current storage doesn't support upload", 405)
 		return
 	}
 	file, err := c.FormFile("file")

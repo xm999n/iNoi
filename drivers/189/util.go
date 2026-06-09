@@ -314,7 +314,8 @@ func (d *Cloud189) newUpload(ctx context.Context, dstDir model.Obj, file model.F
 	}
 	d.sessionKey = sessionKey
 	const DEFAULT int64 = 10485760
-	count := int64(math.Ceil(float64(file.GetSize()) / float64(DEFAULT)))
+	fileSize := file.GetSize()
+	count := int64(math.Ceil(float64(fileSize) / float64(DEFAULT)))
 
 	// 先计算文件完整MD5和分片MD5，用于秒传判断
 	fileMd5Hex := file.GetHash().GetHash(utils.MD5)
@@ -494,17 +495,6 @@ func (d *Cloud189) newUpload(ctx context.Context, dstDir model.Obj, file model.F
 	}()
 
 	return nil
-}
-
-func (d *Cloud189) getCapacityInfo(ctx context.Context) (*CapacityResp, error) {
-	var resp CapacityResp
-	_, err := d.request("https://cloud.189.cn/api/portal/getUserSizeInfo.action", http.MethodGet, func(req *resty.Request) {
-		req.SetContext(ctx)
-	}, &resp)
-	if err != nil {
-		return nil, err
-	}
-	return &resp, nil
 }
 
 // sliceHashWriter 在写入过程中按分片大小自动切分并计算每个分片的MD5，

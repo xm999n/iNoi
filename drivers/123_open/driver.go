@@ -18,6 +18,7 @@ type Open123 struct {
 	model.Storage
 	Addition
 	UID uint64
+	tm  *tokenManager
 }
 
 func (d *Open123) Config() driver.Config {

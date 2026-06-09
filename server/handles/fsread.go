@@ -95,7 +95,8 @@ func FsList(c *gin.Context, req *ListReq, user *model.User) {
 		common.ErrorStrResp(c, "密码不正确或没有权限", 403)
 		return
 	}
-	if !user.CanWrite() && !common.CanWrite(meta, reqPath) && req.Refresh {
+	canWriteContentAtPath := common.CanWrite(user, meta, reqPath) && (user.CanWriteContent() || common.CanWriteContentBypassUserPerms(meta, reqPath))
+	if req.Refresh && !canWriteContentAtPath {
 		common.ErrorStrResp(c, "没有权限刷新", 403)
 		return
 	}

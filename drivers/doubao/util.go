@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"math"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -17,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/drivers/base"
@@ -549,6 +551,7 @@ func (d *Doubao) UploadByMultipart(ctx context.Context, config *UploadConfig, fi
 	totalParts := (fileSize + chunkSize - 1) / chunkSize
 	// 创建分片信息组
 	parts := make([]UploadPart, totalParts)
+	var partsMutex sync.Mutex
 
 	up(10.0) // 更新进度
 	// 设置并行上传

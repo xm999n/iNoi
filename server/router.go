@@ -194,14 +194,6 @@ func fsAndShare(g *gin.RouterGroup) {
 	a.Any("/list", handles.FsArchiveListSplit)
 }
 
-func fsAndShare(g *gin.RouterGroup) {
-	g.Any("/list", handles.FsListSplit)
-	g.Any("/get", handles.FsGetSplit)
-	a := g.Group("/archive")
-	a.Any("/meta", handles.FsArchiveMetaSplit)
-	a.Any("/list", handles.FsArchiveListSplit)
-}
-
 func _fs(g *gin.RouterGroup) {
 	g.Any("/search", middlewares.SearchIndex, handles.Search)
 	g.Any("/other", handles.FsOther)

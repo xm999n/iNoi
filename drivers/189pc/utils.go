@@ -746,6 +746,8 @@ func (y *Cloud189PC) StreamUpload(ctx context.Context, dstDir model.Obj, file mo
 		fileMd5 = utils.MD5.NewFunc()
 		writers = io.MultiWriter(silceMd5, fileMd5)
 	}
+	generateTorrent := y.Addition.GenerateTorrent
+	pieceSHA1Hashes := make([]byte, 0, count*20)
 	for i := 1; i <= count; i++ {
 		if utils.IsCanceled(upCtx) {
 			break
@@ -767,7 +769,15 @@ func (y *Cloud189PC) StreamUpload(ctx context.Context, dstDir model.Obj, file mo
 						return err
 					}
 					silceMd5.Reset()
-					w, err := utils.CopyWithBuffer(writers, reader)
+					var sha1Writer hash.Hash
+					var multiWriter io.Writer
+					if generateTorrent {
+						sha1Writer = sha1Pkg.New()
+						multiWriter = io.MultiWriter(writers, sha1Writer)
+					} else {
+						multiWriter = writers
+					}
+					w, err := utils.CopyWithBuffer(multiWriter, reader)
 					if w != partSize {
 						return fmt.Errorf("failed to read all data: (expect =%d, actual =%d) %w", partSize, w, err)
 					}
@@ -775,6 +785,9 @@ func (y *Cloud189PC) StreamUpload(ctx context.Context, dstDir model.Obj, file mo
 					md5Bytes := silceMd5.Sum(nil)
 					silceMd5Hexs = append(silceMd5Hexs, strings.ToUpper(hex.EncodeToString(md5Bytes)))
 					partInfo = fmt.Sprintf("%d-%s", i, base64.StdEncoding.EncodeToString(md5Bytes))
+					if generateTorrent && sha1Writer != nil {
+						pieceSHA1Hashes = append(pieceSHA1Hashes, sha1Writer.Sum(nil)...)
+					}
 
 					rateLimitedRd = driver.NewLimitedUploadStream(ctx, reader)
 				}

@@ -60,15 +60,7 @@ func (d *Crypt) Init(ctx context.Context) error {
 	}
 	d.FileNameEncoding = utils.GetNoneEmpty(d.FileNameEncoding, "base64")
 	d.EncryptedSuffix = utils.GetNoneEmpty(d.EncryptedSuffix, ".bin")
-
-	op.MustSaveDriverStorage(d)
-
-	// need remote storage exist
-	storage, err := fs.GetStorage(d.RemotePath, &fs.GetStoragesArgs{})
-	if err != nil {
-		return fmt.Errorf("can't find remote storage: %w", err)
-	}
-	d.remoteStorage = storage
+	d.RemotePath = utils.FixAndCleanPath(d.RemotePath)
 
 	p, _ := strings.CutPrefix(d.Password, obfuscatedPrefix)
 	p2, _ := strings.CutPrefix(d.Salt, obfuscatedPrefix)
@@ -108,11 +100,8 @@ func (d *Crypt) Drop(ctx context.Context) error {
 }
 
 func (d *Crypt) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([]model.Obj, error) {
-	path := dir.GetPath()
-	// return d.list(ctx, d.RemotePath, path)
-	// remoteFull
-
-	objs, err := fs.List(ctx, d.getPathForRemote(path, true), &fs.ListArgs{NoLog: true, Refresh: args.Refresh})
+	remoteFullPath := dir.GetPath()
+	objs, err := fs.List(ctx, remoteFullPath, &fs.ListArgs{NoLog: true, Refresh: args.Refresh})
 	// the obj must implement the model.SetPath interface
 	// return objs, err
 	if err != nil {
@@ -121,62 +110,26 @@ func (d *Crypt) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([
 
 	result := make([]model.Obj, 0, len(objs))
 	for _, obj := range objs {
-		if obj.IsDir() {
-			name, err := d.cipher.DecryptDirName(obj.GetName())
-			if err != nil {
-				// filter illegal files
-				continue
-			}
-			if !d.ShowHidden && strings.HasPrefix(name, ".") {
-				continue
-			}
-			objRes := model.Object{
-				Name:     name,
-				Size:     0,
-				Modified: obj.ModTime(),
-				IsFolder: obj.IsDir(),
-				Ctime:    obj.CreateTime(),
-				// discarding hash as it's encrypted
-			}
-			result = append(result, &objRes)
-		} else {
-			thumb, ok := model.GetThumb(obj)
-			size, err := d.cipher.DecryptedSize(obj.GetSize())
-			if err != nil {
-				// filter illegal files
-				continue
-			}
-			name, err := d.cipher.DecryptFileName(obj.GetName())
-			if err != nil {
-				// filter illegal files
-				continue
-			}
-			if !d.ShowHidden && strings.HasPrefix(name, ".") {
-				continue
-			}
-			objRes := model.Object{
-				Name:     name,
-				Size:     size,
-				Modified: obj.ModTime(),
-				IsFolder: obj.IsDir(),
-				Ctime:    obj.CreateTime(),
-				// discarding hash as it's encrypted
-			}
-			if d.Thumbnail && thumb == "" {
-				thumbPath := stdpath.Join(args.ReqPath, ".thumbnails", name+".webp")
-				thumb = fmt.Sprintf("%s/d%s?sign=%s",
-					common.GetApiUrl(ctx),
-					utils.EncodePath(thumbPath, true),
-					sign.Sign(thumbPath))
-			}
-			if !ok && !d.Thumbnail {
-				result = append(result, &objRes)
+		size := obj.GetSize()
+		mask := model.GetObjMask(obj)
+		name := obj.GetName()
+		if mask&model.Virtual == 0 {
+			if obj.IsDir() {
+				name, err = d.cipher.DecryptDirName(model.UnwrapObjName(obj).GetName())
+				if err != nil {
+					// filter illegal files
+					continue
+				}
 			} else {
-				objWithThumb := model.ObjThumb{
-					Object: objRes,
-					Thumbnail: model.Thumbnail{
-						Thumbnail: thumb,
-					},
+				size, err = d.cipher.DecryptedSize(size)
+				if err != nil {
+					// filter illegal files
+					continue
+				}
+				name, err = d.cipher.DecryptFileName(model.UnwrapObjName(obj).GetName())
+				if err != nil {
+					// filter illegal files
+					continue
 				}
 			}
 		}
@@ -222,12 +175,19 @@ func (d *Crypt) Get(ctx context.Context, path string) (model.Obj, error) {
 	remoteFullPath := stdpath.Join(d.RemotePath, d.encryptPath(path, firstTryIsFolder))
 	remoteObj, err := fs.Get(ctx, remoteFullPath, &fs.GetArgs{NoLog: true})
 	if err != nil {
-		if errs.IsObjectNotFound(err) && secondTry {
+		if errors.Is(err, errs.StorageNotFound) {
+			remoteFullPath = stdpath.Join(d.RemotePath, path)
+			remoteObj, err = fs.Get(ctx, remoteFullPath, &fs.GetArgs{NoLog: true})
+			if err != nil {
+				// 可能是 虚拟路径+开启文件夹加密：返回NotSupport让op.Get去尝试op.List查找
+				return nil, errs.NotSupport
+			}
+		} else if secondTry && errs.IsObjectNotFound(err) {
 			// try the opposite
-			remoteFullPath = d.getPathForRemote(path, !firstTryIsFolder)
-			remoteObj, err2 = fs.Get(ctx, remoteFullPath, &fs.GetArgs{NoLog: true})
-			if err2 != nil {
-				return nil, err2
+			remoteFullPath = stdpath.Join(d.RemotePath, d.encryptPath(path, !firstTryIsFolder))
+			remoteObj, err = fs.Get(ctx, remoteFullPath, &fs.GetArgs{NoLog: true})
+			if err != nil {
+				return nil, err
 			}
 		} else {
 			return nil, err
@@ -266,9 +226,9 @@ func (d *Crypt) Get(ctx context.Context, path string) (model.Obj, error) {
 		Size:     size,
 		Modified: remoteObj.ModTime(),
 		IsFolder: remoteObj.IsDir(),
-	}
-	return obj, nil
-	// return nil, errs.ObjectNotFound
+		Ctime:    remoteObj.CreateTime(),
+		Mask:     mask,
+	}, nil
 }
 
 // https://github.com/rclone/rclone/blob/v1.67.0/backend/crypt/cipher.go#L37
@@ -379,15 +339,8 @@ func (d *Crypt) Rename(ctx context.Context, srcObj model.Obj, newName string) er
 }
 
 func (d *Crypt) Copy(ctx context.Context, srcObj, dstDir model.Obj) error {
-	srcRemoteActualPath, err := d.getActualPathForRemote(srcObj.GetPath(), srcObj.IsDir())
-	if err != nil {
-		return fmt.Errorf("failed to convert path to remote path: %w", err)
-	}
-	dstRemoteActualPath, err := d.getActualPathForRemote(dstDir.GetPath(), dstDir.IsDir())
-	if err != nil {
-		return fmt.Errorf("failed to convert path to remote path: %w", err)
-	}
-	return op.Copy(ctx, d.remoteStorage, srcRemoteActualPath, dstRemoteActualPath)
+	_, err := fs.Copy(ctx, srcObj.GetPath(), dstDir.GetPath())
+	return err
 }
 
 func (d *Crypt) Remove(ctx context.Context, obj model.Obj) error {
@@ -429,7 +382,11 @@ func (d *Crypt) Put(ctx context.Context, dstDir model.Obj, streamer model.FileSt
 }
 
 func (d *Crypt) GetDetails(ctx context.Context) (*model.StorageDetails, error) {
-	remoteDetails, err := op.GetStorageDetails(ctx, d.remoteStorage)
+	remoteStorage, _, err := op.GetStorageAndActualPath(d.RemotePath)
+	if err != nil {
+		return nil, errs.NotImplement
+	}
+	remoteDetails, err := op.GetStorageDetails(ctx, remoteStorage)
 	if err != nil {
 		return nil, err
 	}
@@ -437,9 +394,5 @@ func (d *Crypt) GetDetails(ctx context.Context) (*model.StorageDetails, error) {
 		DiskUsage: remoteDetails.DiskUsage,
 	}, nil
 }
-
-//func (d *Safe) Other(ctx context.Context, args model.OtherArgs) (interface{}, error) {
-//	return nil, errs.NotSupport
-//}
 
 var _ driver.Driver = (*Crypt)(nil)

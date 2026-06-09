@@ -167,12 +167,8 @@ func transfer(ctx context.Context, taskType taskType, srcObjPath, dstDirPath str
 		}
 		t.Base.SetCtx(ctx)
 		err = t.RunWithNextTaskCallback(callback)
-		if hasSuccess || err == nil {
-			if taskType == move {
-				task_group.RefreshAndRemove(dstDirPath, task_group.SrcPathToRemove(srcObjPath))
-			} else {
-				op.Cache.DeleteDirectory(t.DstStorage, dstDirActualPath)
-			}
+		if err == nil {
+			hasSuccess = true
 		}
 		if taskType == move {
 			task_group.TransferCoordinator.AppendPayload(t.groupID, task_group.SrcPathToRemove(srcObjPath))
@@ -210,7 +206,23 @@ func (t *FileTransferTask) RunWithNextTaskCallback(f func(nextTask *FileTransfer
 			if t.Ctx().Value(conf.NoTaskKey) != nil {
 				defer op.Cache.DeleteDirectory(t.DstStorage, dstActualPath)
 			} else {
-				task_group.TransferCoordinator.AppendPayload(t.groupID, task_group.DstPathToRefresh(dstActualPath))
+				task_group.TransferCoordinator.AppendPayload(t.groupID, task_group.DstPathToHook(dstActualPath))
+			}
+		}
+
+		existedObjs := make(map[string]bool)
+		if t.TaskType == merge {
+			dstObjs, err := op.List(t.Ctx(), t.DstStorage, dstActualPath, model.ListArgs{})
+			if err != nil && !errors.Is(err, errs.ObjectNotFound) {
+				return errors.WithMessagef(err, "failed list dst [%s] objs", dstActualPath)
+			}
+			for _, obj := range dstObjs {
+				if err := t.Ctx().Err(); err != nil {
+					return err
+				}
+				if !obj.IsDir() {
+					existedObjs[obj.GetName()] = true
+				}
 			}
 		}
 

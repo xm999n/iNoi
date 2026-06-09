@@ -212,10 +212,7 @@ func (d *Cloudreve) GetDetails(ctx context.Context) (*model.StorageDetails, erro
 	var r StorageDetails
 	d.request(http.MethodGet, "/user/storage", nil, &r)
 	return &model.StorageDetails{
-		DiskUsage: model.DiskUsage{
-			TotalSpace: r.Total,
-			UsedSpace:  r.Used,
-		},
+		DiskUsage: driver.DiskUsageFromUsedAndTotal(uint64(r.Used), uint64(r.Total)),
 	}, nil
 }
 

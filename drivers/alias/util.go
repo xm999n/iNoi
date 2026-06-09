@@ -2,10 +2,9 @@ package alias
 
 import (
 	"context"
-	"errors"
+	"math/rand"
 	stdpath "path"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/internal/driver"
@@ -14,14 +13,21 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/internal/op"
 	"github.com/OpenListTeam/OpenList/v4/server/common"
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
 
+type detailWithIndex struct {
+	idx int
+	val *model.StorageDetails
+}
+
 func (d *Alias) listRoot(ctx context.Context, withDetails, refresh bool) []model.Obj {
 	var objs []model.Obj
-	var wg sync.WaitGroup
+	detailsChan := make(chan detailWithIndex, len(d.pathMap))
+	workerCount := 0
 	for _, k := range d.rootOrder {
-		obj := model.Object{
+		obj := &model.Object{
 			Name:     k,
 			Path:     "/" + k,
 			IsFolder: true,
@@ -44,8 +50,7 @@ func (d *Alias) listRoot(ctx context.Context, withDetails, refresh bool) []model
 			continue
 		}
 		objs[idx] = &model.ObjStorageDetails{
-			Obj:            objs[idx],
-			StorageDetails: nil,
+			Obj: objs[idx],
 		}
 		workerCount++
 		go func(dri driver.Driver, i int) {
@@ -66,54 +71,14 @@ func (d *Alias) listRoot(ctx context.Context, withDetails, refresh bool) []model
 		case <-time.After(time.Second):
 			workerCount = 0
 		}
-		idx := len(objs)
-		objs = append(objs, &obj)
-		v := d.pathMap[k]
-		if !withDetails || len(v) != 1 {
-			continue
-		}
-		remoteDriver, err := op.GetStorageByMountPath(v[0])
-		if err != nil {
-			continue
-		}
-		_, ok := remoteDriver.(driver.WithDetails)
-		if !ok {
-			continue
-		}
-		objs[idx] = &model.ObjStorageDetails{
-			Obj: objs[idx],
-			StorageDetailsWithName: model.StorageDetailsWithName{
-				StorageDetails: nil,
-				DriverName:     remoteDriver.Config().Name,
-			},
-		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			c, cancel := context.WithTimeout(ctx, time.Second)
-			defer cancel()
-			details, e := op.GetStorageDetails(c, remoteDriver, refresh)
-			if e != nil {
-				if !errors.Is(e, errs.NotImplement) && !errors.Is(e, errs.StorageNotInit) {
-					log.Errorf("failed get %s storage details: %+v", remoteDriver.GetStorage().MountPath, e)
-				}
-				return
-			}
-			objs[idx].(*model.ObjStorageDetails).StorageDetails = details
-		}()
 	}
-	wg.Wait()
 	return objs
 }
 
 // do others that not defined in Driver interface
 func getPair(path string) (string, string) {
-	// path = strings.TrimSpace(path)
-	if strings.Contains(path, ":") {
-		pair := strings.SplitN(path, ":", 2)
-		if !strings.Contains(pair[0], "/") {
-			return pair[0], pair[1]
-		}
+	if name, path, ok := strings.Cut(path, ":"); ok && !strings.Contains(name, "/") {
+		return name, path
 	}
 	return stdpath.Base(path), path
 }
@@ -127,7 +92,7 @@ func (d *Alias) getRootsAndPath(path string) (roots []string, sub string) {
 	if !ok {
 		return d.pathMap[path], ""
 	}
-	return parts[0], parts[1]
+	return d.pathMap[before], after
 }
 
 func (d *Alias) link(ctx context.Context, reqPath string, args model.LinkArgs) (*model.Link, model.Obj, error) {
@@ -135,15 +100,8 @@ func (d *Alias) link(ctx context.Context, reqPath string, args model.LinkArgs) (
 	if err != nil {
 		return nil, nil, err
 	}
-	if !args.Redirect {
-		return op.Link(ctx, storage, reqActualPath, args)
-	}
-	obj, err := fs.Get(ctx, reqPath, &fs.GetArgs{NoLog: true})
-	if err != nil {
-		return nil, nil, err
-	}
-	if common.ShouldProxy(storage, stdpath.Base(reqPath)) {
-		return nil, obj, nil
+	if args.Redirect && common.ShouldProxy(storage, stdpath.Base(reqPath)) {
+		return nil, nil, nil
 	}
 	return op.Link(ctx, storage, reqActualPath, args)
 }
@@ -332,11 +290,15 @@ func getRandomObjByQuotaBalanced(ctx context.Context, reqPath BalancedObjs, stri
 	}
 
 	// Try select one that has space info
+	neededSpace := uint64(0)
+	if objSize > 0 {
+		neededSpace = uint64(objSize)
+	}
 	selected, ok := selectRandom(details, func(d *model.StorageDetails) uint64 {
-		if d == nil || d.FreeSpace() < objSize {
+		if d == nil || d.FreeSpace < neededSpace {
 			return 0
 		}
-		return uint64(d.FreeSpace())
+		return d.FreeSpace
 	})
 	if !ok {
 		if strict {

@@ -397,6 +397,46 @@ func (d *BaiduNetdisk) quota(ctx context.Context) (model.DiskUsage, error) {
 	return driver.DiskUsageFromUsedAndTotal(resp.Used, resp.Total), nil
 }
 
+func (d *BaiduNetdisk) getUploadUrl(path, uploadId string) string {
+	if !d.UseDynamicUploadAPI || uploadId == "" {
+		return d.UploadAPI
+	}
+
+	uploadUrl, err := d.requestForUploadUrl(path, uploadId)
+	if err != nil {
+		return d.UploadAPI
+	}
+	return uploadUrl
+}
+
+func (d *BaiduNetdisk) requestForUploadUrl(path, uploadId string) (string, error) {
+	params := map[string]string{
+		"method":         "locateupload",
+		"appid":          "250528",
+		"path":           path,
+		"uploadid":       uploadId,
+		"upload_version": "2.0",
+	}
+	apiUrl := "https://d.pcs.baidu.com/rest/2.0/pcs/file"
+	var resp UploadServerResp
+	_, err := d.request(apiUrl, http.MethodGet, func(req *resty.Request) {
+		req.SetQueryParams(params)
+	}, &resp)
+	if err != nil {
+		return "", err
+	}
+	var uploadUrl string
+	if len(resp.Servers) > 0 {
+		uploadUrl = resp.Servers[0].Server
+	} else if len(resp.BakServers) > 0 {
+		uploadUrl = resp.BakServers[0].Server
+	}
+	if uploadUrl == "" {
+		return "", errors.New("upload URL is empty")
+	}
+	return uploadUrl, nil
+}
+
 // func encodeURIComponent(str string) string {
 // 	r := url.QueryEscape(str)
 // 	r = strings.ReplaceAll(r, "+", "%20")

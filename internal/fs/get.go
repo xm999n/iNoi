@@ -14,7 +14,8 @@ func get(ctx context.Context, path string, args *GetArgs) (model.Obj, error) {
 	path = utils.FixAndCleanPath(path)
 	// maybe a virtual file
 	if path != "/" {
-		virtualFiles := op.GetStorageVirtualFilesWithDetailsByPath(ctx, stdpath.Dir(path), !args.WithStorageDetails, false)
+		dir, name := stdpath.Split(path)
+		virtualFiles := op.GetStorageVirtualFilesWithDetailsByPath(ctx, dir, !args.WithStorageDetails, false)
 		for _, f := range virtualFiles {
 			if f.GetName() == name {
 				return f, nil

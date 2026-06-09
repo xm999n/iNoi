@@ -101,7 +101,7 @@ func (d *Strm) convert2strmObjs(ctx context.Context, reqPath string, objs []mode
 			},
 		})
 	}
-	return validObjs, nil
+	return validObjs
 }
 
 func (d *Strm) getLink(ctx context.Context, path string) string {

@@ -23,7 +23,7 @@ func (f *FileObj) GetHash() utils.HashInfo {
 }
 
 func (f *FileObj) Thumb() string {
-	return f.ThumbURL
+	return ""
 }
 
 type UploadResult struct {

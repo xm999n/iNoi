@@ -18,7 +18,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var ( // 不同情况下获取的AccessTokenQPS限制不同 如下模块化易于拓展
+var ( // 涓嶅悓鎯呭喌涓嬭幏鍙栫殑AccessTokenQPS闄愬埗涓嶅悓 濡備笅妯″潡鍖栨槗浜庢嫇灞?
 	Api = "https://open-api.123pan.com"
 
 	AccessToken    = InitApiInfo(Api+"/api/v1/access_token", 1)
@@ -68,7 +68,7 @@ func (d *Open123) Request(apiInfo *ApiInfo, method string, callback base.ReqCall
 		}
 		body := res.Body()
 
-		// 解析为通用响应
+		// 瑙ｆ瀽涓洪€氱敤鍝嶅簲
 		var baseResp BaseResp
 		if err = json.Unmarshal(body, &baseResp); err != nil {
 			return nil, err
@@ -77,87 +77,39 @@ func (d *Open123) Request(apiInfo *ApiInfo, method string, callback base.ReqCall
 		if baseResp.Code == 0 {
 			return body, nil
 		} else if baseResp.Code == 401 {
-			// 强制刷新Token, 有小概率会 race condition 导致多次刷新Token，但不影响正确运行
+			// 寮哄埗鍒锋柊Token, 鏈夊皬姒傜巼浼?race condition 瀵艰嚧澶氭鍒锋柊Token锛屼絾涓嶅奖鍝嶆纭繍琛?
 			if _, err := d.getAccessToken(true); err != nil {
 				return nil, err
 			}
 		} else if baseResp.Code == 429 {
 			time.Sleep(500 * time.Millisecond)
-			log.Warningf("API: %s, QPS: %d, 请求太频繁，对应API提示过多请减小QPS", apiInfo.url, apiInfo.qps)
+			log.Warningf("API: %s, QPS: %d, 璇锋眰澶绻侊紝瀵瑰簲API鎻愮ず杩囧璇峰噺灏廞PS", apiInfo.url, apiInfo.qps)
 		} else {
 			return nil, errors.New(baseResp.Message)
 		}
 	}
 }
 
-func (d *Open123) flushAccessToken() error {
-	if d.ClientID != "" {
-		if d.RefreshToken != "" {
-			var resp RefreshTokenResp
-			_, err := d.Request(RefreshToken, http.MethodPost, func(req *resty.Request) {
-				req.SetQueryParam("client_id", d.ClientID)
-				if d.ClientSecret != "" {
-					req.SetQueryParam("client_secret", d.ClientSecret)
-				}
-				req.SetQueryParam("grant_type", "refresh_token")
-				req.SetQueryParam("refresh_token", d.RefreshToken)
-			}, &resp)
-			if err != nil {
-				return err
-			}
-			d.AccessToken = resp.AccessToken
-			d.RefreshToken = resp.RefreshToken
-			op.MustSaveDriverStorage(d)
-		} else if d.ClientSecret != "" {
-			var resp AccessTokenResp
-			_, err := d.Request(AccessToken, http.MethodPost, func(req *resty.Request) {
-				req.SetBody(base.Json{
-					"clientID":     d.ClientID,
-					"clientSecret": d.ClientSecret,
-				})
-			}, &resp)
-			if err != nil {
-				return err
-			}
-			d.AccessToken = resp.Data.AccessToken
-			op.MustSaveDriverStorage(d)
-		}
-	}
-
-	// 待签名字符串，格式：path-timestamp-rand-uid-privateKey
-	unsignedStr := fmt.Sprintf("%s-%d-%s-%d-%s", objURL.Path, ts, rand, uid, privateKey)
-	md5Hash := md5.Sum([]byte(unsignedStr))
-	// 生成鉴权参数，格式：timestamp-rand-uid-md5hash
-	authKey := fmt.Sprintf("%d-%s-%d-%x", ts, rand, uid, md5Hash)
-
-	// 添加鉴权参数到URL查询参数
-	v := objURL.Query()
-	v.Add("auth_key", authKey)
-	objURL.RawQuery = v.Encode()
-
-	return objURL.String(), nil
-}
-
 func (d *Open123) SignURL(originURL, privateKey string, uid uint64, validDuration time.Duration) (newURL string, err error) {
-	// 生成Unix时间戳
+	// 鐢熸垚Unix鏃堕棿鎴?
 	ts := time.Now().Add(validDuration).Unix()
 
-	// 生成随机数（建议使用UUID，不能包含中划线（-））
+	// 鐢熸垚闅忔満鏁帮紙寤鸿浣跨敤UUID锛屼笉鑳藉寘鍚腑鍒掔嚎锛?锛夛級
 	rand := strings.ReplaceAll(uuid.New().String(), "-", "")
 
-	// 解析URL
+	// 瑙ｆ瀽URL
 	objURL, err := url.Parse(originURL)
 	if err != nil {
 		return "", err
 	}
 
-	// 待签名字符串，格式：path-timestamp-rand-uid-privateKey
+	// 寰呯鍚嶅瓧绗︿覆锛屾牸寮忥細path-timestamp-rand-uid-privateKey
 	unsignedStr := fmt.Sprintf("%s-%d-%s-%d-%s", objURL.Path, ts, rand, uid, privateKey)
 	md5Hash := md5.Sum([]byte(unsignedStr))
-	// 生成鉴权参数，格式：timestamp-rand-uid-md5hash
+	// 鐢熸垚閴存潈鍙傛暟锛屾牸寮忥細timestamp-rand-uid-md5hash
 	authKey := fmt.Sprintf("%d-%s-%d-%x", ts, rand, uid, md5Hash)
 
-	// 添加鉴权参数到URL查询参数
+	// 娣诲姞閴存潈鍙傛暟鍒癠RL鏌ヨ鍙傛暟
 	v := objURL.Query()
 	v.Add("auth_key", authKey)
 	objURL.RawQuery = v.Encode()

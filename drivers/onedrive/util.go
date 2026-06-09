@@ -132,7 +132,7 @@ func (d *Onedrive) _refreshToken() error {
 	return nil
 }
 
-func (d *Onedrive) Request(url string, method string, callback base.ReqCallback, resp interface{}) ([]byte, error) {
+func (d *Onedrive) Request(url string, method string, callback base.ReqCallback, resp interface{}, noRetry ...bool) ([]byte, error) {
 	if d.ref != nil {
 		return d.ref.Request(url, method, callback, resp)
 	}
