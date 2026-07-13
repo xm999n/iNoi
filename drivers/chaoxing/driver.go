@@ -226,16 +226,13 @@ func (d *ChaoXing) Put(ctx context.Context, dstDir model.Obj, file model.FileStr
 	if resp.Result != 1 {
 		return errors.New("get upload data error")
 	}
-	body := &bytes.Buffer{}
+	body := bytes.NewBuffer(make([]byte, 0, bytes.MinRead))
 	writer := multipart.NewWriter(body)
-	filePart, err := writer.CreateFormFile("file", file.GetName())
+	_, err = writer.CreateFormFile("file", file.GetName())
 	if err != nil {
 		return err
 	}
-	_, err = utils.CopyWithBuffer(filePart, file)
-	if err != nil {
-		return err
-	}
+	headSize := body.Len()
 	err = writer.WriteField("_token", resp.Msg.Token)
 	if err != nil {
 		return err
@@ -249,10 +246,12 @@ func (d *ChaoXing) Put(ctx context.Context, dstDir model.Obj, file model.FileStr
 	if err != nil {
 		return err
 	}
+	head := bytes.NewReader(body.Bytes()[:headSize])
+	tail := bytes.NewReader(body.Bytes()[headSize:])
 	r := driver.NewLimitedUploadStream(ctx, &driver.ReaderUpdatingProgress{
 		Reader: &driver.SimpleReaderWithSize{
-			Reader: body,
-			Size:   int64(body.Len()),
+			Reader: io.MultiReader(head, file, tail),
+			Size:   int64(body.Len()) + file.GetSize(),
 		},
 		UpdateProgress: up,
 	})
@@ -267,12 +266,13 @@ func (d *ChaoXing) Put(ctx context.Context, dstDir model.Obj, file model.FileStr
 		return err
 	}
 	defer resps.Body.Close()
-	bodys, err := io.ReadAll(resps.Body)
+	body.Reset()
+	_, err = body.ReadFrom(resps.Body)
 	if err != nil {
 		return err
 	}
 	var fileRsp UploadFileDataRsp
-	err = json.Unmarshal(bodys, &fileRsp)
+	err = json.Unmarshal(body.Bytes(), &fileRsp)
 	if err != nil {
 		return err
 	}

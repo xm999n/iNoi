@@ -2,8 +2,10 @@ package LenovoNasShare
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
+	stdpath "path"
 	"strings"
 	"time"
 
@@ -31,6 +33,7 @@ func (d *LenovoNasShare) GetAddition() driver.Additional {
 }
 
 func (d *LenovoNasShare) Init(ctx context.Context) error {
+	d.ShareId = stdpath.Base(d.ShareId)
 	if err := d.getStoken(); err != nil {
 		return err
 	}
@@ -47,12 +50,7 @@ func (d *LenovoNasShare) Drop(ctx context.Context) error {
 
 func (d *LenovoNasShare) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([]model.Obj, error) {
 	d.checkStoken() // 检查stoken是否过期
-	files := make([]File, 0)
-
-	path := dir.GetPath()
-	if path == "" && !d.ShowRootFolder && d.RootFolderPath != "" {
-		path = d.RootFolderPath
-	}
+	path := fmt.Sprintf("/%s", strings.Trim(dir.GetPath(), "/"))
 
 	var resp Files
 	query := map[string]string{
@@ -69,9 +67,7 @@ func (d *LenovoNasShare) List(ctx context.Context, dir model.Obj, args model.Lis
 		return nil, err
 	}
 
-	files = append(files, resp.Data.List...)
-
-	return utils.SliceConvert(files, func(src File) (model.Obj, error) {
+	return utils.SliceConvert(resp.Data.List, func(src File) (model.Obj, error) {
 		if src.IsDir() {
 			return src, nil
 		}
@@ -102,9 +98,6 @@ func (d *LenovoNasShare) getStoken() error { // 获取stoken
 	if d.Host == "" {
 		d.Host = "https://siot-share.lenovo.com.cn"
 	}
-
-	parts := strings.Split(d.ShareId, "/")
-	d.ShareId = parts[len(parts)-1]
 
 	query := map[string]string{
 		"code":     d.ShareId,

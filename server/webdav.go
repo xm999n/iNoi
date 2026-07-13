@@ -6,14 +6,13 @@ import (
 	"path"
 	"strings"
 
+	"github.com/OpenListTeam/OpenList/v4/internal/conf"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
+	"github.com/OpenListTeam/OpenList/v4/internal/op"
+	"github.com/OpenListTeam/OpenList/v4/internal/setting"
 	"github.com/OpenListTeam/OpenList/v4/internal/stream"
 	"github.com/OpenListTeam/OpenList/v4/server/common"
 	"github.com/OpenListTeam/OpenList/v4/server/middlewares"
-
-	"github.com/OpenListTeam/OpenList/v4/internal/conf"
-	"github.com/OpenListTeam/OpenList/v4/internal/op"
-	"github.com/OpenListTeam/OpenList/v4/internal/setting"
 	"github.com/OpenListTeam/OpenList/v4/server/webdav"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
@@ -55,7 +54,7 @@ func WebDAVAuth(c *gin.Context) {
 	count, cok := model.LoginCache.Get(ip)
 	if cok && count >= model.DefaultMaxAuthRetries {
 		if c.Request.Method == "OPTIONS" {
-			common.GinWithValue(c, conf.UserKey, guest)
+			common.GinAppendValues(c, conf.UserKey, guest)
 			c.Next()
 			return
 		}
@@ -79,13 +78,13 @@ func WebDAVAuth(c *gin.Context) {
 					c.Abort()
 					return
 				}
-				common.GinWithValue(c, conf.UserKey, admin)
+				common.GinAppendValues(c, conf.UserKey, admin)
 				c.Next()
 				return
 			}
 		}
 		if c.Request.Method == "OPTIONS" {
-			common.GinWithValue(c, conf.UserKey, guest)
+			common.GinAppendValues(c, conf.UserKey, guest)
 			c.Next()
 			return
 		}
@@ -94,10 +93,10 @@ func WebDAVAuth(c *gin.Context) {
 		c.Abort()
 		return
 	}
-	user, err := op.GetUserByName(username)
-	if err != nil || user.ValidateRawPassword(password) != nil {
+	user, ok := tryLogin(username, password)
+	if !ok {
 		if c.Request.Method == "OPTIONS" {
-			common.GinWithValue(c, conf.UserKey, guest)
+			common.GinAppendValues(c, conf.UserKey, guest)
 			c.Next()
 			return
 		}
@@ -110,7 +109,7 @@ func WebDAVAuth(c *gin.Context) {
 	model.LoginCache.Del(ip)
 	if user.Disabled || !user.CanWebdavRead() {
 		if c.Request.Method == "OPTIONS" {
-			common.GinWithValue(c, conf.UserKey, guest)
+			common.GinAppendValues(c, conf.UserKey, guest)
 			c.Next()
 			return
 		}
@@ -118,22 +117,22 @@ func WebDAVAuth(c *gin.Context) {
 		c.Abort()
 		return
 	}
-	if (c.Request.Method == "PUT" || c.Request.Method == "MKCOL") && (!user.CanWebdavManage() || !user.CanWrite()) {
+	if (c.Request.Method == "PUT" || c.Request.Method == "MKCOL") && !user.CanWebdavManage() {
 		c.Status(http.StatusForbidden)
 		c.Abort()
 		return
 	}
-	if c.Request.Method == "MOVE" && (!user.CanWebdavManage() || (!user.CanMove() && !user.CanRename())) {
+	if c.Request.Method == "MOVE" && !user.CanWebdavManage() {
 		c.Status(http.StatusForbidden)
 		c.Abort()
 		return
 	}
-	if c.Request.Method == "COPY" && (!user.CanWebdavManage() || !user.CanCopy()) {
+	if c.Request.Method == "COPY" && !user.CanWebdavManage() {
 		c.Status(http.StatusForbidden)
 		c.Abort()
 		return
 	}
-	if c.Request.Method == "DELETE" && (!user.CanWebdavManage() || !user.CanRemove()) {
+	if c.Request.Method == "DELETE" && !user.CanWebdavManage() {
 		c.Status(http.StatusForbidden)
 		c.Abort()
 		return
@@ -143,6 +142,24 @@ func WebDAVAuth(c *gin.Context) {
 		c.Abort()
 		return
 	}
-	common.GinWithValue(c, conf.UserKey, user)
+	common.GinAppendValues(c, conf.UserKey, user)
+	if user.IsGuest() {
+		common.GinAppendValues(c, conf.MetaPassKey, password)
+	} else {
+		common.GinAppendValues(c, conf.MetaPassKey, "")
+	}
 	c.Next()
+}
+
+func tryLogin(username, password string) (*model.User, bool) {
+	user, err := op.GetUserByName(username)
+	if err == nil {
+		err = user.ValidateRawPassword(password)
+		if err != nil && setting.GetBool(conf.LdapLoginEnabled) && user.AllowLdap {
+			err = common.HandleLdapLogin(username, password)
+		}
+	} else if setting.GetBool(conf.LdapLoginEnabled) && model.CanWebdavRead(int32(setting.GetInt(conf.LdapDefaultPermission, 0))) {
+		user, err = tryLdapLoginAndRegister(username, password)
+	}
+	return user, err == nil
 }

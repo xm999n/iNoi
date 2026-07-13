@@ -82,7 +82,6 @@ func (d *Onedrive) _refreshToken() error {
 			ErrorMessage string `json:"text"`
 		}
 		_, err := base.RestyClient.R().
-			SetHeader("User-Agent", "Mozilla/5.0 (Macintosh; Apple macOS 15_5) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/138.0.0.0 Openlist/425.6.30").
 			SetResult(&resp).
 			SetQueryParams(map[string]string{
 				"refresh_ui": d.RefreshToken,
@@ -133,7 +132,7 @@ func (d *Onedrive) _refreshToken() error {
 	return nil
 }
 
-func (d *Onedrive) Request(url string, method string, callback base.ReqCallback, resp interface{}) ([]byte, error) {
+func (d *Onedrive) Request(url string, method string, callback base.ReqCallback, resp interface{}, noRetry ...bool) ([]byte, error) {
 	if d.ref != nil {
 		return d.ref.Request(url, method, callback, resp)
 	}
@@ -152,7 +151,7 @@ func (d *Onedrive) Request(url string, method string, callback base.ReqCallback,
 		return nil, err
 	}
 	if e.Error.Code != "" {
-		if e.Error.Code == "InvalidAuthenticationToken" {
+		if e.Error.Code == "InvalidAuthenticationToken" && !utils.IsBool(noRetry...) {
 			err = d.refreshToken()
 			if err != nil {
 				return nil, err
@@ -285,6 +284,7 @@ func (d *Onedrive) upBig(ctx context.Context, dstDir model.Obj, stream model.Fil
 					return nil
 				}
 			},
+			retry.Context(ctx),
 			retry.Attempts(3),
 			retry.DelayType(retry.BackOffDelay),
 			retry.Delay(time.Second),

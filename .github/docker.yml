@@ -1,0 +1,135 @@
+name: release_docker
+
+# 只允许手动触发
+on:
+  workflow_dispatch:
+
+jobs:
+  build_binary:
+    name: Build Go Binary
+    runs-on: ubuntu-latest
+    steps:
+      # 拉取完整历史和标签，保证 git describe 不报错
+      - name: Check out the repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 设置 Go
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+
+      # 缓存 Musl
+      - name: Cache Musl
+        id: cache-musl
+        uses: actions/cache@v4
+        with:
+          path: build/musl-libs
+          key: docker-musl-libs
+
+      # 下载 Musl 库（如果缓存未命中）
+      - name: Download Musl Library
+        if: steps.cache-musl.outputs.cache-hit != 'true'
+        run: bash build.sh prepare docker-multiplatform
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 构建 Go 二进制文件
+      - name: Build go binary
+        run: bash build.sh release docker-multiplatform
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 上传构建产物
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries_docker_release
+          overwrite: true
+          path: |
+            build/
+            !build/*.tgz
+            !build/musl-libs/**
+
+  push_to_registries:
+    needs: build_binary
+    name: Push Docker image to multiple registries
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+      attestations: write
+      id-token: write
+    strategy:
+      matrix:
+        image: ["latest", "ffmpeg"]
+        include:
+          - image: "latest"
+            build_arg: ""
+            tag_favor: ""
+          - image: "ffmpeg"
+            build_arg: INSTALL_FFMPEG=true
+            tag_favor: "suffix=-ffmpeg,onlatest=true"
+
+    steps:
+      # 拉取完整历史
+      - name: Check out the repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 下载构建产物
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries_docker_release
+          path: 'build/'
+
+      # 生成 Docker 元数据
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            necroticglow/inoi
+          flavor: |
+            latest=auto
+            ${{ matrix.tag_favor }}
+
+      # 设置 QEMU
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # 设置 Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 登录 Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 登录 GitHub Container Registry
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 构建并推送多平台 Docker 镜像
+      - name: Build and push Docker images
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.ci
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/386,linux/arm/v6,linux/s390x
+          build-args: |
+            ${{ matrix.build_arg }}

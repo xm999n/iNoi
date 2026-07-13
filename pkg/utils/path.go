@@ -44,11 +44,15 @@ func IsSubPath(path string, subPath string) bool {
 }
 
 func Ext(path string) string {
+	return strings.ToLower(SourceExt(path))
+}
+
+func SourceExt(path string) string {
 	ext := stdpath.Ext(path)
 	if len(ext) > 0 && ext[0] == '.' {
 		ext = ext[1:]
 	}
-	return strings.ToLower(ext)
+	return ext
 }
 
 func EncodePath(path string, all ...bool) string {
@@ -107,14 +111,14 @@ func GetPathHierarchy(path string) []string {
 
 	hierarchy := []string{"/"}
 
-	parts := strings.Split(path, "/")
-	currentPath := ""
-	for _, part := range parts {
+	parts := strings.SplitSeq(path, "/")
+	var currentPath strings.Builder
+	for part := range parts {
 		if part == "" {
 			continue
 		}
-		currentPath += "/" + part
-		hierarchy = append(hierarchy, currentPath)
+		currentPath.WriteString("/" + part)
+		hierarchy = append(hierarchy, currentPath.String())
 	}
 
 	return hierarchy

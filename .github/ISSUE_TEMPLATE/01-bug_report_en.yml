@@ -13,8 +13,8 @@ body:
     attributes:
       label: Please confirm the following
       description: |
-        You must check all the following, otherwise your issue may be closed directly.
-        Or you can go to the [discussions](https://github.com/OpenListTeam/OpenList/discussions).
+        You must read, check, confirm, and agree to all the following, otherwise your issue will definitely be closed directly.
+        Or you can go to the [discussions](https://github.com/li-peifeng/iNoi/discussions).
       options:
         - label: |
             I have read and agree to [AGPL-3.0 Section 15](https://www.gnu.org/licenses/agpl-3.0.txt#:~:text=15.%20Disclaimer%20of%20Warranty.) .
@@ -29,16 +29,17 @@ body:
         - label: |
             I confirm there are no duplicate issues or discussions.
         - label: |
-            I confirm this is an `OpenList` issue, not caused by other reasons (such as [network](https://doc.oplist.org/faq/howto#tls-handshake-timeout-read-connection-reset-by-peer-dns-lookup-failed-connect-connection-refused-client-timeout-exceeded-while-awaiting-headers-no-such-host-1), dependencies, or operation).
+            I confirm this is an `iNoi` issue, not caused by other reasons (such as [network](https://doc.oplist.org/faq/howto#tls-handshake-timeout-read-connection-reset-by-peer-dns-lookup-failed-connect-connection-refused-client-timeout-exceeded-while-awaiting-headers-no-such-host-1), dependencies, or operation).
         - label: |
-            I believe this issue must be handled by `OpenList` and not by a third party.
+            I believe this issue must be handled by `iNoi` and not by a third party.
         - label: |
             I confirm this issue is not fixed in the latest version.
-
+        - label: |
+            I have not read these checkboxes and therefore I just ticked them all, Please close this issue.
   - type: input
     id: version
     attributes:
-      label: OpenList Version (required)
+      label: iNoi Version (required)
       description: |
         What version of the software are you using? Please do not use `latest` or `master` as the answer.
       placeholder: v4.xx.xx
@@ -60,22 +61,30 @@ body:
     validations:
       required: true
   - type: textarea
+    id: logs
+    attributes:
+      label: Logs (required)
+      description: |
+        Please copy and paste any relevant log output or screenshots. (You may mask sensitive fields) [Guide](https://doc.oplist.org/faq/howto#how-to-quickly-locate-bugs)
+    validations:
+      required: true
+  - type: textarea
     id: config
     attributes:
       label: Configuration File Content (required)
       description: |
-        Please provide your `OpenList` application's configuration file and a screenshot of the relevant storage configuration. (You may mask sensitive fields)
+        Please provide your `iNoi` application's configuration file and a screenshot of the relevant storage configuration. (You may mask sensitive fields)
     validations:
       required: true
-  - type: textarea
-    id: logs
-    attributes:
-      label: Logs (optional)
-      description: |
-        Please copy and paste any relevant log output or screenshots. (You may mask sensitive fields) [Guide](https://doc.oplist.org/faq/howto#how-to-quickly-locate-bugs)
   - type: textarea
     id: reproduction
     attributes:
       label: Reproduction Link (optional)
       description: |
         Please provide a link to a repo or page that can reproduce this issue.
+  - type: textarea
+    id: aigenerated
+    attributes:
+      label: AI Generated Content (optional)
+      description: |
+        If this issue was identified with the assistance of AI, please provide the complete chat log, including information about the model used.

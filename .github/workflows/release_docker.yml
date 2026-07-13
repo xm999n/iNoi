@@ -81,9 +81,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            leolitaly/inoi
-            ghcr.io/${{ github.repository }}
-            crpi-4gzagxlw13387lm6.cn-shanghai.personal.cr.aliyuncs.com/isweethub/inoi
+            necroticglow/inoi
           flavor: |
             latest=auto
             ${{ matrix.tag_favor }}
@@ -106,14 +104,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Log in to aliyun
-        uses: docker/login-action@v3
-        with:
-          registry: crpi-4gzagxlw13387lm6.cn-shanghai.personal.cr.aliyuncs.com
-          username: ${{ secrets.ALI_USERNAME }}
-          password: ${{ secrets.ALI_TOKEN }}
-      
+     
       - name: Build and push Docker images
         id: push
         uses: docker/build-push-action@v6

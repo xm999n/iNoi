@@ -3,6 +3,7 @@ package _189pc
 import (
 	"bytes"
 	"context"
+	sha1Pkg "crypto/sha1"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
@@ -745,6 +746,8 @@ func (y *Cloud189PC) StreamUpload(ctx context.Context, dstDir model.Obj, file mo
 		fileMd5 = utils.MD5.NewFunc()
 		writers = io.MultiWriter(silceMd5, fileMd5)
 	}
+	generateTorrent := y.Addition.GenerateTorrent
+	pieceSHA1Hashes := make([]byte, 0, count*20)
 	for i := 1; i <= count; i++ {
 		if utils.IsCanceled(upCtx) {
 			break
@@ -766,7 +769,15 @@ func (y *Cloud189PC) StreamUpload(ctx context.Context, dstDir model.Obj, file mo
 						return err
 					}
 					silceMd5.Reset()
-					w, err := utils.CopyWithBuffer(writers, reader)
+					var sha1Writer hash.Hash
+					var multiWriter io.Writer
+					if generateTorrent {
+						sha1Writer = sha1Pkg.New()
+						multiWriter = io.MultiWriter(writers, sha1Writer)
+					} else {
+						multiWriter = writers
+					}
+					w, err := utils.CopyWithBuffer(multiWriter, reader)
 					if w != partSize {
 						return fmt.Errorf("failed to read all data: (expect =%d, actual =%d) %w", partSize, w, err)
 					}
@@ -774,6 +785,9 @@ func (y *Cloud189PC) StreamUpload(ctx context.Context, dstDir model.Obj, file mo
 					md5Bytes := silceMd5.Sum(nil)
 					silceMd5Hexs = append(silceMd5Hexs, strings.ToUpper(hex.EncodeToString(md5Bytes)))
 					partInfo = fmt.Sprintf("%d-%s", i, base64.StdEncoding.EncodeToString(md5Bytes))
+					if generateTorrent && sha1Writer != nil {
+						pieceSHA1Hashes = append(pieceSHA1Hashes, sha1Writer.Sum(nil)...)
+					}
 
 					rateLimitedRd = driver.NewLimitedUploadStream(ctx, reader)
 				}
@@ -804,6 +818,7 @@ func (y *Cloud189PC) StreamUpload(ctx context.Context, dstDir model.Obj, file mo
 	if err = threadG.Wait(); err != nil {
 		return nil, err
 	}
+	defer up(100)
 
 	if fileMd5 != nil {
 		fileMd5Hex = strings.ToUpper(hex.EncodeToString(fileMd5.Sum(nil)))
@@ -829,6 +844,45 @@ func (y *Cloud189PC) StreamUpload(ctx context.Context, dstDir model.Obj, file mo
 	if err != nil {
 		return nil, err
 	}
+
+	// 生成 torrent 文件（异步，不影响上传结果）
+	if generateTorrent && len(pieceSHA1Hashes) > 0 {
+		// 捕获必要的变量
+		capturedDstDir := dstDir
+		capturedIsFamily := isFamily
+		capturedFileName := file.GetName()
+		go func() {
+			torrentData, err := GenerateTorrent(capturedFileName, fileSize, fileMd5Hex, silceMd5Hexs, sliceSize, pieceSHA1Hashes)
+			if err != nil {
+				utils.Log.Warnf("生成 torrent 失败: %v", err)
+				return
+			}
+			infoHash, _ := GetInfoHashHex(torrentData)
+			torrentName := capturedFileName + ".cas.torrent"
+			utils.Log.Infof("已生成 torrent: %s (info_hash: %s, size: %d bytes)",
+				torrentName, infoHash, len(torrentData))
+
+			// 将 torrent 文件上传到同一目录（使用 FastUpload，因为 torrent 文件很小）
+			torrentFileStream := &stream.FileStream{
+				Ctx: context.Background(),
+				Obj: &model.Object{
+					Name:     torrentName,
+					Size:     int64(len(torrentData)),
+					IsFolder: false,
+				},
+				Reader:   bytes.NewReader(torrentData),
+				Mimetype: "application/x-bittorrent",
+			}
+			_, uploadErr := y.FastUpload(context.Background(), capturedDstDir, torrentFileStream, func(p float64) {}, capturedIsFamily, false)
+			if uploadErr != nil {
+				utils.Log.Warnf("上传 torrent 文件失败: %v", uploadErr)
+			} else {
+				utils.Log.Infof("torrent 文件已上传: %s", torrentName)
+				op.Cache.DeleteDirectory(y, capturedDstDir.GetPath())
+			}
+		}()
+	}
+
 	return resp.toFile(), nil
 }
 
@@ -995,7 +1049,7 @@ func (y *Cloud189PC) FastUpload(ctx context.Context, dstDir model.Obj, file mode
 					return err
 				}
 
-				up(float64(threadG.Success()) * 100 / float64(len(uploadUrls)))
+				up(float64(threadG.Success()+1) * 100 / float64(len(uploadUrls)+1))
 				uploadProgress.UploadParts[i] = ""
 				return nil
 			})
@@ -1007,6 +1061,7 @@ func (y *Cloud189PC) FastUpload(ctx context.Context, dstDir model.Obj, file mode
 			}
 			return nil, err
 		}
+		defer up(100)
 	}
 
 	// step.5 提交

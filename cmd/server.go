@@ -20,7 +20,7 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/OpenListTeam/OpenList/v4/server"
 	"github.com/OpenListTeam/OpenList/v4/server/middlewares"
-	"github.com/OpenListTeam/sftpd-openlist"
+	sftpd "github.com/OpenListTeam/sftpd-openlist"
 	ftpserver "github.com/fclairamb/ftpserverlib"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"

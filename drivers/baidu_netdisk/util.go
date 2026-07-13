@@ -42,7 +42,6 @@ func (d *BaiduNetdisk) _refreshToken() error {
 			ErrorMessage string `json:"text"`
 		}
 		_, err := base.RestyClient.R().
-			SetHeader("User-Agent", "Mozilla/5.0 (Macintosh; Apple macOS 15_5) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/138.0.0.0 Openlist/425.6.30").
 			SetResult(&resp).
 			SetQueryParams(map[string]string{
 				"refresh_ui": d.RefreshToken,
@@ -115,14 +114,14 @@ func (d *BaiduNetdisk) request(furl string, method string, callback base.ReqCall
 		errno := utils.Json.Get(res.Body(), "errno").ToInt()
 		if errno != 0 {
 			if utils.SliceContains([]int{111, -6}, errno) {
-				log.Info("refreshing baidu_netdisk token.")
+				log.Info("[baidu_netdisk] refreshing baidu_netdisk token.")
 				err2 := d.refreshToken()
 				if err2 != nil {
 					return retry.Unrecoverable(err2)
 				}
 			}
 
-			if 31023 == errno && d.DownloadAPI == "crack_video" {
+			if errno == 31023 && d.DownloadAPI == "crack_video" {
 				result = res.Body()
 				return nil
 			}
@@ -154,7 +153,7 @@ func (d *BaiduNetdisk) postForm(pathname string, params map[string]string, form 
 
 func (d *BaiduNetdisk) getFiles(dir string) ([]File, error) {
 	start := 0
-	limit := 200
+	limit := 1000
 	params := map[string]string{
 		"method": "list",
 		"dir":    dir,
@@ -170,7 +169,6 @@ func (d *BaiduNetdisk) getFiles(dir string) ([]File, error) {
 	for {
 		params["start"] = strconv.Itoa(start)
 		params["limit"] = strconv.Itoa(limit)
-		start += limit
 		var resp ListResp
 		_, err := d.get("/xpan/file", params, &resp)
 		if err != nil {
@@ -189,6 +187,11 @@ func (d *BaiduNetdisk) getFiles(dir string) ([]File, error) {
 		} else {
 			res = append(res, resp.List...)
 		}
+
+		if len(resp.List) < limit {
+			break
+		}
+		start += limit
 	}
 	return res, nil
 }
@@ -247,7 +250,7 @@ func (d *BaiduNetdisk) linkCrack(file model.Obj, _ model.LinkArgs) (*model.Link,
 func (d *BaiduNetdisk) linkCrackVideo(file model.Obj, _ model.LinkArgs) (*model.Link, error) {
 	param := map[string]string{
 		"type":       "VideoURL",
-		"path":       fmt.Sprintf("%s", file.GetPath()),
+		"path":       file.GetPath(),
 		"fs_id":      file.GetID(),
 		"devuid":     "0%1",
 		"clienttype": "1",
@@ -326,10 +329,10 @@ func (d *BaiduNetdisk) getSliceSize(filesize int64) int64 {
 	// 非会员固定为 4MB
 	if d.vipType == 0 {
 		if d.CustomUploadPartSize != 0 {
-			log.Warnf("CustomUploadPartSize is not supported for non-vip user, use DefaultSliceSize")
+			log.Warnf("[baidu_netdisk] CustomUploadPartSize is not supported for non-vip user, use DefaultSliceSize")
 		}
 		if filesize > MaxSliceNum*DefaultSliceSize {
-			log.Warnf("File size(%d) is too large, may cause upload failure", filesize)
+			log.Warnf("[baidu_netdisk] File size(%d) is too large, may cause upload failure", filesize)
 		}
 
 		return DefaultSliceSize
@@ -337,17 +340,17 @@ func (d *BaiduNetdisk) getSliceSize(filesize int64) int64 {
 
 	if d.CustomUploadPartSize != 0 {
 		if d.CustomUploadPartSize < DefaultSliceSize {
-			log.Warnf("CustomUploadPartSize(%d) is less than DefaultSliceSize(%d), use DefaultSliceSize", d.CustomUploadPartSize, DefaultSliceSize)
+			log.Warnf("[baidu_netdisk] CustomUploadPartSize(%d) is less than DefaultSliceSize(%d), use DefaultSliceSize", d.CustomUploadPartSize, DefaultSliceSize)
 			return DefaultSliceSize
 		}
 
 		if d.vipType == 1 && d.CustomUploadPartSize > VipSliceSize {
-			log.Warnf("CustomUploadPartSize(%d) is greater than VipSliceSize(%d), use VipSliceSize", d.CustomUploadPartSize, VipSliceSize)
+			log.Warnf("[baidu_netdisk] CustomUploadPartSize(%d) is greater than VipSliceSize(%d), use VipSliceSize", d.CustomUploadPartSize, VipSliceSize)
 			return VipSliceSize
 		}
 
 		if d.vipType == 2 && d.CustomUploadPartSize > SVipSliceSize {
-			log.Warnf("CustomUploadPartSize(%d) is greater than SVipSliceSize(%d), use SVipSliceSize", d.CustomUploadPartSize, SVipSliceSize)
+			log.Warnf("[baidu_netdisk] CustomUploadPartSize(%d) is greater than SVipSliceSize(%d), use SVipSliceSize", d.CustomUploadPartSize, SVipSliceSize)
 			return SVipSliceSize
 		}
 
@@ -377,7 +380,7 @@ func (d *BaiduNetdisk) getSliceSize(filesize int64) int64 {
 	}
 
 	if filesize > MaxSliceNum*maxSliceSize {
-		log.Warnf("File size(%d) is too large, may cause upload failure", filesize)
+		log.Warnf("[baidu_netdisk] File size(%d) is too large, may cause upload failure", filesize)
 	}
 
 	return maxSliceSize
@@ -392,6 +395,46 @@ func (d *BaiduNetdisk) quota(ctx context.Context) (model.DiskUsage, error) {
 		return model.DiskUsage{}, err
 	}
 	return driver.DiskUsageFromUsedAndTotal(resp.Used, resp.Total), nil
+}
+
+func (d *BaiduNetdisk) getUploadUrl(path, uploadId string) string {
+	if !d.UseDynamicUploadAPI || uploadId == "" {
+		return d.UploadAPI
+	}
+
+	uploadUrl, err := d.requestForUploadUrl(path, uploadId)
+	if err != nil {
+		return d.UploadAPI
+	}
+	return uploadUrl
+}
+
+func (d *BaiduNetdisk) requestForUploadUrl(path, uploadId string) (string, error) {
+	params := map[string]string{
+		"method":         "locateupload",
+		"appid":          "250528",
+		"path":           path,
+		"uploadid":       uploadId,
+		"upload_version": "2.0",
+	}
+	apiUrl := "https://d.pcs.baidu.com/rest/2.0/pcs/file"
+	var resp UploadServerResp
+	_, err := d.request(apiUrl, http.MethodGet, func(req *resty.Request) {
+		req.SetQueryParams(params)
+	}, &resp)
+	if err != nil {
+		return "", err
+	}
+	var uploadUrl string
+	if len(resp.Servers) > 0 {
+		uploadUrl = resp.Servers[0].Server
+	} else if len(resp.BakServers) > 0 {
+		uploadUrl = resp.BakServers[0].Server
+	}
+	if uploadUrl == "" {
+		return "", errors.New("upload URL is empty")
+	}
+	return uploadUrl, nil
 }
 
 // func encodeURIComponent(str string) string {

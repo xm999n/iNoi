@@ -213,15 +213,13 @@ type QueryGroupContentListResp struct {
 			ResultDesc string `json:"resultDesc"`
 		} `json:"result"`
 		GetGroupContentResult struct {
-			ParentCatalogID string `json:"parentCatalogID"` // 根目录是"0"
+			ParentCatalogID string `json:"parentCatalogID"` // 鏍圭洰褰曟槸"0"
 			CatalogList     []struct {
 				Catalog
 				Path string `json:"path"`
 			} `json:"catalogList"`
 			ContentList []Content `json:"contentList"`
-			NodeCount   int       `json:"nodeCount"` // 文件+文件夹数量
-			CtlgCnt     int       `json:"ctlgCnt"`   // 文件夹数量
-			ContCnt     int       `json:"contCnt"`   // 文件数量
+			NodeCount   int       `json:"nodeCount"` // 鏂囦欢+鏂囦欢澶规暟閲?			CtlgCnt     int       `json:"ctlgCnt"`   // 鏂囦欢澶规暟閲?			ContCnt     int       `json:"contCnt"`   // 鏂囦欢鏁伴噺
 		} `json:"getGroupContentResult"`
 	} `json:"data"`
 }
@@ -328,4 +326,36 @@ type FamilyDiskInfoResp struct {
 		UsedSize string `json:"usedSize"`
 		DiskSize string `json:"diskSize"`
 	} `json:"data"`
+}
+
+type ModifyCloudDocV2Resp struct {
+	Result struct {
+		ResultCode string `json:"resultCode"`
+		ResultDesc string `json:"resultDesc"`
+	} `json:"result"`
+}
+
+type CreateBatchOprTaskReq struct {
+	CatalogList       []string `json:"catalogList"`
+	CommonAccountInfo struct {
+		Account     string `json:"account"`
+		AccountType string `json:"accountType"`
+	} `json:"commonAccountInfo"`
+	ContentList       []string `json:"contentList"`
+	DestCatalogID     string   `json:"destCatalogID"`
+	DestGroupID       string   `json:"destGroupID"`
+	DestPath          string   `json:"destPath"`
+	DestType          int      `json:"destType"`
+	SourceCatalogType int      `json:"sourceCatalogType"`
+	SourceCloudID     string   `json:"sourceCloudID"`
+	SourceType        int      `json:"sourceType"`
+	TaskType          int      `json:"taskType"`
+}
+
+type CreateBatchOprTaskResp struct {
+	Result struct {
+		ResultCode string `json:"resultCode"`
+		ResultDesc string `json:"resultDesc"`
+	} `json:"result"`
+	TaskID string `json:"taskID"`
 }

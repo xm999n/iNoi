@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
+	"github.com/OpenListTeam/OpenList/v4/internal/errs"
 	"github.com/OpenListTeam/OpenList/v4/internal/fs"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
+	"github.com/OpenListTeam/OpenList/v4/internal/setting"
 	"github.com/OpenListTeam/OpenList/v4/internal/stream"
 	"github.com/OpenListTeam/OpenList/v4/internal/task"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
@@ -26,6 +28,14 @@ func getLastModified(c *gin.Context) time.Time {
 	}
 	lastModified := time.UnixMilli(lastModifiedMillisecond)
 	return lastModified
+}
+
+// shouldIgnoreSystemFile checks if the filename should be ignored based on settings
+func shouldIgnoreSystemFile(filename string) bool {
+	if setting.GetBool(conf.IgnoreSystemFiles) {
+		return utils.IsSystemFile(filename)
+	}
+	return false
 }
 
 func FsStream(c *gin.Context) {
@@ -51,12 +61,16 @@ func FsStream(c *gin.Context) {
 	}
 	if !overwrite {
 		if res, _ := fs.Get(c.Request.Context(), path, &fs.GetArgs{NoLog: true}); res != nil {
-			common.ErrorStrResp(c, "文件已存在", 403)
+			common.ErrorStrResp(c, "file exists", 403)
 			return
 		}
 	}
 	dir, name := stdpath.Split(path)
-	// 如果请求头 Content-Length 和 X-File-Size 都没有，则 size=-1，表示未知大小的流式上传
+	if shouldIgnoreSystemFile(name) {
+		common.ErrorStrResp(c, errs.IgnoredSystemFile.Error(), 403)
+		return
+	}
+	// 濡傛灉璇锋眰澶?Content-Length 鍜?X-File-Size 閮芥病鏈夛紝鍒?size=-1锛岃〃绀烘湭鐭ュぇ灏忕殑娴佸紡涓婁紶
 	size := c.Request.ContentLength
 	if size < 0 {
 		sizeStr := c.GetHeader("X-File-Size")
@@ -97,7 +111,7 @@ func FsStream(c *gin.Context) {
 	if asTask {
 		t, err = fs.PutAsTask(c.Request.Context(), dir, s)
 	} else {
-		err = fs.PutDirectly(c.Request.Context(), dir, s, true)
+		err = fs.PutDirectly(c.Request.Context(), dir, s)
 	}
 	if err != nil {
 		common.ErrorResp(c, err, 500)
@@ -135,7 +149,7 @@ func FsForm(c *gin.Context) {
 	}
 	if !overwrite {
 		if res, _ := fs.Get(c.Request.Context(), path, &fs.GetArgs{NoLog: true}); res != nil {
-			common.ErrorStrResp(c, "文件已存在", 403)
+			common.ErrorStrResp(c, "file exists", 403)
 			return
 		}
 	}
@@ -145,7 +159,7 @@ func FsForm(c *gin.Context) {
 		return
 	}
 	if storage.Config().NoUpload {
-		common.ErrorStrResp(c, "当前存储不支持上传", 405)
+		common.ErrorStrResp(c, "Current storage doesn't support upload", 405)
 		return
 	}
 	file, err := c.FormFile("file")
@@ -160,6 +174,11 @@ func FsForm(c *gin.Context) {
 	}
 	defer f.Close()
 	dir, name := stdpath.Split(path)
+	// Check if system file should be ignored
+	if shouldIgnoreSystemFile(name) {
+		common.ErrorStrResp(c, errs.IgnoredSystemFile.Error(), 403)
+		return
+	}
 	h := make(map[*utils.HashType]string)
 	if md5 := c.GetHeader("X-File-Md5"); md5 != "" {
 		h[utils.MD5] = md5
@@ -192,7 +211,7 @@ func FsForm(c *gin.Context) {
 		}{f}
 		t, err = fs.PutAsTask(c.Request.Context(), dir, s)
 	} else {
-		err = fs.PutDirectly(c.Request.Context(), dir, s, true)
+		err = fs.PutDirectly(c.Request.Context(), dir, s)
 	}
 	if err != nil {
 		common.ErrorResp(c, err, 500)

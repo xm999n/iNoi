@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -96,7 +97,11 @@ func InitConfig() {
 	}
 
 	if conf.Conf.MaxConcurrency > 0 {
-		net.DefaultConcurrencyLimit = &net.ConcurrencyLimit{Limit: conf.Conf.MaxConcurrency}
+		if conf.Conf.MaxConcurrency > math.MaxInt32 {
+			net.DefaultConcurrencyLimit = &net.ConcurrencyLimit{Limit: math.MaxInt32}
+		} else {
+			net.DefaultConcurrencyLimit = &net.ConcurrencyLimit{Limit: uint32(conf.Conf.MaxConcurrency)}
+		}
 	}
 	if conf.Conf.MaxBufferLimit < 0 {
 		m, _ := mem.VirtualMemory()
@@ -116,6 +121,39 @@ func InitConfig() {
 		conf.MmapThreshold = 0
 	}
 	log.Infof("mmap threshold: %dMB", conf.Conf.MmapThreshold)
+
+	memStat, _ := mem.VirtualMemory()
+	if memStat != nil {
+		log.Infof("total memory: %dMB, available: %dMB", memStat.Total>>20, memStat.Available>>20)
+		if conf.Conf.MinFreeMemory < 0 {
+			conf.MinFreeMemory = 0
+			log.Info("disable memory cache")
+		} else if conf.Conf.MinFreeMemory < 16 {
+			t := (memStat.Total >> 20) / 10
+			conf.MinFreeMemory = max(16, min(t, 1024)) << 20
+		} else {
+			conf.MinFreeMemory = uint64(conf.Conf.MinFreeMemory) << 20
+		}
+		log.Infof("min free memory: %dMB", conf.MinFreeMemory>>20)
+
+		if conf.Conf.MaxBlockLimit < 4 {
+			t := (memStat.Total >> 20) * 3 / 100
+			conf.MaxBlockLimit = max(4, min(uint64(t), 64)) << 20
+		} else {
+			conf.MaxBlockLimit = uint64(conf.Conf.MaxBlockLimit) << 20
+		}
+		log.Infof("max block limit: %dMB", conf.MaxBlockLimit>>20)
+	} else {
+		conf.MinFreeMemory = 0
+		log.Warn("failed to get memory info, disable memory cache")
+	}
+
+	if conf.Conf.AutoMemoryLimit > 0 {
+		conf.AutoMemoryLimit = uint64(conf.Conf.AutoMemoryLimit) << 20
+	} else {
+		conf.AutoMemoryLimit = 0
+	}
+	log.Infof("auto memory limit: %dMB", conf.AutoMemoryLimit>>20)
 
 	if len(conf.Conf.Log.Filter.Filters) == 0 {
 		conf.Conf.Log.Filter.Enable = false
@@ -140,6 +178,10 @@ func InitConfig() {
 		log.Fatalf("create temp dir error: %+v", err)
 	}
 	log.Debugf("config: %+v", conf.Conf)
+
+	// Validate and display proxy configuration status
+	validateProxyConfig()
+
 	base.InitClient()
 	initURL()
 }
@@ -176,6 +218,17 @@ func CleanTempDir() {
 	for _, file := range files {
 		if err := os.RemoveAll(filepath.Join(conf.Conf.TempDir, file.Name())); err != nil {
 			log.Errorln("failed delete temp file: ", err)
+		}
+	}
+}
+
+// validateProxyConfig validates proxy configuration and displays status at startup
+func validateProxyConfig() {
+	if conf.Conf.ProxyAddress != "" {
+		if _, err := url.Parse(conf.Conf.ProxyAddress); err == nil {
+			log.Infof("Proxy enabled: %s", conf.Conf.ProxyAddress)
+		} else {
+			log.Errorf("Invalid proxy address format: %s, error: %v", conf.Conf.ProxyAddress, err)
 		}
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/stream"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/OpenListTeam/OpenList/v4/server/common"
+	log "github.com/sirupsen/logrus"
 )
 
 type Strm struct {
@@ -40,14 +41,24 @@ func (d *Strm) Init(ctx context.Context) error {
 	if d.Paths == "" {
 		return errors.New("paths is required")
 	}
+	if d.SaveStrmToLocal && len(d.SaveStrmLocalPath) <= 0 {
+		return errors.New("SaveStrmLocalPath is required")
+	}
 	d.pathMap = make(map[string][]string)
-	for _, path := range strings.Split(d.Paths, "\n") {
+	for path := range strings.SplitSeq(d.Paths, "\n") {
 		path = strings.TrimSpace(path)
 		if path == "" {
 			continue
 		}
 		k, v := getPair(path)
 		d.pathMap[k] = append(d.pathMap[k], v)
+		if d.SaveStrmToLocal {
+			err := InsertStrm(utils.FixAndCleanPath(strings.TrimSpace(path)), d)
+			if err != nil {
+				log.Errorf("insert strmTrie error: %v", err)
+				continue
+			}
+		}
 	}
 	if len(d.pathMap) == 1 {
 		for k := range d.pathMap {
@@ -59,26 +70,50 @@ func (d *Strm) Init(ctx context.Context) error {
 		d.autoFlatten = false
 	}
 
-	d.supportSuffix = supportSuffix()
-	if d.FilterFileTypes != "" {
-		types := strings.Split(d.FilterFileTypes, ",")
-		for _, ext := range types {
-			ext = strings.ToLower(strings.TrimSpace(ext))
-			if ext != "" {
-				d.supportSuffix[ext] = struct{}{}
-			}
+	if d.FilterFileTypes == "" {
+		d.FilterFileTypes = "mp4,mkv,flv,avi,wmv,ts,rmvb,webm,mp3,flac,aac,wav,ogg,m4a,wma,alac"
+	}
+	supportTypes := strings.Split(d.FilterFileTypes, ",")
+	d.supportSuffix = map[string]struct{}{}
+	for _, ext := range supportTypes {
+		ext = strings.ToLower(strings.TrimSpace(ext))
+		if ext != "" {
+			d.supportSuffix[ext] = struct{}{}
 		}
 	}
 
-	d.downloadSuffix = downloadSuffix()
-	if d.DownloadFileTypes != "" {
-		downloadTypes := strings.Split(d.DownloadFileTypes, ",")
-		for _, ext := range downloadTypes {
-			ext = strings.ToLower(strings.TrimSpace(ext))
-			if ext != "" {
+	if d.DownloadFileTypes == "" {
+		d.DownloadFileTypes = "ass,srt,vtt,sub,strm"
+	}
+	downloadTypes := strings.Split(d.DownloadFileTypes, ",")
+	d.downloadSuffix = map[string]struct{}{}
+	for _, ext := range downloadTypes {
+		ext = strings.ToLower(strings.TrimSpace(ext))
+		if ext != "" {
+			d.downloadSuffix[ext] = struct{}{}
+		}
+	}
+
+	if d.Version != 5 {
+		d.FilterFileTypes = strings.Join(supportTypes, ",")
+
+		types := strings.SplitSeq("ass,srt,vtt,sub,strm", ",")
+		for ext := range types {
+			if _, ok := d.downloadSuffix[ext]; !ok {
 				d.downloadSuffix[ext] = struct{}{}
+				downloadTypes = append(downloadTypes, ext)
 			}
 		}
+		d.DownloadFileTypes = strings.Join(downloadTypes, ",")
+		d.PathPrefix = "/d"
+		d.Version = 5
+	}
+	if d.LocalModel {
+		d.WithoutUrl = true
+		d.PathPrefix = ""
+	}
+	if len(d.SaveLocalMode) == 0 {
+		d.SaveLocalMode = SaveLocalInsertMode
 	}
 	return nil
 }
@@ -87,7 +122,14 @@ func (d *Strm) Drop(ctx context.Context) error {
 	d.pathMap = nil
 	d.downloadSuffix = nil
 	d.supportSuffix = nil
+	for path := range strings.SplitSeq(d.Paths, "\n") {
+		RemoveStrm(utils.FixAndCleanPath(strings.TrimSpace(path)), d)
+	}
 	return nil
+}
+
+func (Addition) GetRootPath() string {
+	return "/"
 }
 
 func (d *Strm) Get(ctx context.Context, path string) (model.Obj, error) {

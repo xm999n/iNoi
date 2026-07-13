@@ -9,11 +9,13 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/drivers/base"
+	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/go-resty/resty/v2"
 	jsoniter "github.com/json-iterator/go"
@@ -23,28 +25,117 @@ import (
 // do others that not defined in Driver interface
 
 const (
-	Api              = "https://www.123pan.com/api"
-	AApi             = "https://www.123pan.com/a/api"
-	BApi             = "https://www.123pan.com/b/api"
-	LoginApi         = "https://login.123pan.com/api"
-	MainApi          = BApi
-	SignIn           = LoginApi + "/user/sign_in"
-	Logout           = MainApi + "/user/logout"
-	UserInfo         = MainApi + "/user/info"
-	FileList         = MainApi + "/file/list/new"
-	DownloadInfo     = MainApi + "/file/download_info"
-	Mkdir            = MainApi + "/file/upload_request"
-	Move             = MainApi + "/file/mod_pid"
-	Rename           = MainApi + "/file/rename"
-	Trash            = MainApi + "/file/trash"
-	UploadRequest    = MainApi + "/file/upload_request"
-	UploadComplete   = MainApi + "/file/upload_complete"
-	S3PreSignedUrls  = MainApi + "/file/s3_repare_upload_parts_batch"
-	S3Auth           = MainApi + "/file/s3_upload_object/auth"
-	UploadCompleteV2 = MainApi + "/file/upload_complete/v2"
-	S3Complete       = MainApi + "/file/s3_complete_multipart_upload"
+	ApiBase           = "https://www.123pan.com"
+	Api               = ApiBase + "/api"
+	AApi              = ApiBase + "/a/api"
+	BApi              = ApiBase + "/b/api"
+	LoginApi          = "https://login.123pan.com/api"
+	MainApi           = BApi
+	SignInAndroid     = BApi + "/user/sign_in"
+	SignInWeb         = LoginApi + "/user/sign_in"
+	Logout            = MainApi + "/user/logout"
+	UserInfo          = BApi + "/user/info"
+	FileList          = Api + "/file/list/new"
+	DownloadInfo      = AApi + "/file/download_info"
+	Mkdir             = AApi + "/file/upload_request"
+	Move              = MainApi + "/file/mod_pid"
+	Rename            = MainApi + "/file/rename"
+	Trash             = AApi + "/file/trash"
+	UploadRequest     = BApi + "/file/upload_request"
+	UploadComplete    = BApi + "/file/upload_complete"
+	S3PreSignedUrls   = BApi + "/file/s3_repare_upload_parts_batch"
+	S3Auth            = BApi + "/file/s3_upload_object/auth"
+	UploadCompleteV2  = BApi + "/file/upload_complete/v2"
+	S3Complete        = BApi + "/file/s3_complete_multipart_upload"
+	OfflineResolve    = MainApi + "/v2/offline_download/task/resolve"
+	OfflineSubmit     = MainApi + "/v2/offline_download/task/submit"
+	OfflineTaskList   = MainApi + "/offline_download/task/list"
+	OfflineTaskDelete = MainApi + "/offline_download/task/delete"
 	// AuthKeySalt      = "8-8D$sL8gPjom7bk#cY"
 )
+
+var ErrOfflineTaskNotFound = errors.New("offline task not found")
+
+const (
+	androidAppVersion   = "61"
+	androidXAppVersion  = "2.4.0"
+	androidDeviceBrand  = "Xiaomi"
+	androidPlatformName = "android"
+)
+
+var (
+	androidDeviceTypes = []string{
+		"24075RP89G", "24076RP19G", "24076RP19I", "M1805E10A", "M2004J11G",
+		"M2012K11AG", "M2104K10I", "22021211RG", "22021211RI", "21121210G",
+		"23049PCD8G", "23049PCD8I", "23013PC75G", "24069PC21G", "24069PC21I",
+		"23113RKC6G", "M1912G7BI", "M2007J20CI", "M2007J20CG", "M2007J20CT",
+		"M2102J20SG", "M2102J20SI", "21061110AG", "2201116PG", "2201116PI",
+		"22041216G", "22041216UG", "22111317PG", "22111317PI", "22101320G",
+		"22101320I", "23122PCD1G", "23122PCD1I", "2311DRK48G", "2311DRK48I",
+		"2312FRAFDI", "M2004J19PI",
+	}
+	androidOSVersions = []string{
+		"Android_7.1.2", "Android_8.0.0", "Android_8.1.0", "Android_9.0",
+		"Android_10", "Android_11", "Android_12", "Android_13",
+		"Android_6.0.1", "Android_5.1.1", "Android_4.4.4", "Android_4.3",
+		"Android_4.2.2", "Android_4.1.2",
+	}
+	androidRand       = rand.New(rand.NewSource(time.Now().UnixNano()))
+	androidDeviceType = pickAndroid(androidDeviceTypes)
+	androidOSVersion  = pickAndroid(androidOSVersions)
+	androidLoginUUID  = randHex(32)
+)
+
+func pickAndroid(options []string) string {
+	if len(options) == 0 {
+		return ""
+	}
+	return options[androidRand.Intn(len(options))]
+}
+
+func randHex(n int) string {
+	const hex = "0123456789abcdef"
+	if n <= 0 {
+		return ""
+	}
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = hex[androidRand.Intn(len(hex))]
+	}
+	return string(b)
+}
+
+func useAndroidProtocol() bool {
+	return strings.ToLower(strings.TrimSpace(os.Getenv("PAN123_PROTOCOL"))) != "web"
+}
+
+func androidHeaders(authorization string) map[string]string {
+	return map[string]string{
+		"content-type":    "application/json",
+		"authorization":   authorization,
+		"LoginUuid":       androidLoginUUID,
+		"user-agent":      fmt.Sprintf("123pan/v%s(%s;%s)", androidXAppVersion, androidOSVersion, androidDeviceBrand),
+		"accept-encoding": "gzip",
+		"osversion":       androidOSVersion,
+		"platform":        androidPlatformName,
+		"devicetype":      androidDeviceType,
+		"devicename":      androidDeviceBrand,
+		"host":            "www.123pan.com",
+		"app-version":     androidAppVersion,
+		"x-app-version":   androidXAppVersion,
+	}
+}
+
+func webHeaders(authorization string) map[string]string {
+	return map[string]string{
+		"origin":        "https://www.123pan.com",
+		"referer":       "https://www.123pan.com/",
+		"authorization": authorization,
+		"user-agent":    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) openlist-client",
+		"platform":      "web",
+		"app-version":   "3",
+	}
+}
 
 func signPath(path string, os string, version string) (k string, v string) {
 	table := []byte{'a', 'd', 'e', 'f', 'g', 'h', 'l', 'm', 'y', 'i', 'j', 'n', 'o', 'p', 'k', 'q', 'r', 's', 't', 'u', 'b', 'c', 'v', 'w', 's', 'z'}
@@ -153,22 +244,29 @@ func (d *Pan123) login() error {
 			"type":     2,
 		}
 	} else {
-		body = base.Json{
-			"passport": d.Username,
-			"password": d.Password,
-			"remember": true,
+		if useAndroidProtocol() {
+			body = base.Json{
+				"passport": d.Username,
+				"password": d.Password,
+				"type":     1,
+			}
+		} else {
+			body = base.Json{
+				"passport": d.Username,
+				"password": d.Password,
+				"remember": true,
+			}
 		}
 	}
+	loginUrl := SignInWeb
+	headers := webHeaders("")
+	if useAndroidProtocol() {
+		loginUrl = SignInAndroid
+		headers = androidHeaders("")
+	}
 	res, err := base.RestyClient.R().
-		SetHeaders(map[string]string{
-			"origin":      "https://www.123pan.com",
-			"referer":     "https://www.123pan.com/",
-			"user-agent":  "Dart/2.19(dart:io)-openlist",
-			"platform":    "web",
-			"app-version": "3",
-			//"user-agent":  base.UserAgent,
-		}).
-		SetBody(body).Post(SignIn)
+		SetHeaders(headers).
+		SetBody(body).Post(loginUrl)
 	if err != nil {
 		return err
 	}
@@ -198,15 +296,12 @@ func (d *Pan123) Request(url string, method string, callback base.ReqCallback, r
 	isRetry := false
 do:
 	req := base.RestyClient.R()
-	req.SetHeaders(map[string]string{
-		"origin":        "https://www.123pan.com",
-		"referer":       "https://www.123pan.com/",
-		"authorization": "Bearer " + d.AccessToken,
-		"user-agent":    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) openlist-client",
-		"platform":      "web",
-		"app-version":   "3",
-		//"user-agent":    base.UserAgent,
-	})
+	authorization := "Bearer " + d.AccessToken
+	headers := webHeaders(authorization)
+	if useAndroidProtocol() {
+		headers = androidHeaders(authorization)
+	}
+	req.SetHeaders(headers)
 	if callback != nil {
 		callback(req)
 	}
@@ -218,7 +313,11 @@ do:
 	//	return nil, err
 	//}
 	//req.SetQueryParam("auth-key", *authKey)
-	res, err := req.Execute(method, GetApi(url))
+	finalURL := url
+	if !useAndroidProtocol() {
+		finalURL = GetApi(url)
+	}
+	res, err := req.Execute(method, finalURL)
 	if err != nil {
 		return nil, err
 	}
@@ -236,6 +335,115 @@ do:
 		return nil, errors.New(jsoniter.Get(body, "message").ToString())
 	}
 	return body, nil
+}
+
+func (d *Pan123) OfflineDownload(ctx context.Context, uri string, dstDir model.Obj) (int64, error) {
+	var resolveResp offlineResolveResp
+	_, err := d.Request(OfflineResolve, http.MethodPost, func(req *resty.Request) {
+		req.SetContext(ctx).SetBody(base.Json{
+			"urls": uri,
+		})
+	}, &resolveResp)
+	if err != nil {
+		return 0, err
+	}
+	if len(resolveResp.Data.List) == 0 {
+		return 0, fmt.Errorf("offline resolve failed: empty response")
+	}
+	if resolveResp.Data.List[0].Result != 0 {
+		msg := resolveResp.Data.List[0].ErrMsg
+		if msg == "" {
+			msg = "offline resolve failed"
+		}
+		return 0, fmt.Errorf("%s", msg)
+	}
+	resourceID := resolveResp.Data.List[0].ID
+	if resourceID == 0 {
+		return 0, fmt.Errorf("offline resolve failed: empty resource id")
+	}
+	selectFileIDs := make([]int64, 0, len(resolveResp.Data.List[0].Files))
+	for _, f := range resolveResp.Data.List[0].Files {
+		if f.ID > 0 {
+			selectFileIDs = append(selectFileIDs, f.ID)
+		}
+	}
+	if len(selectFileIDs) == 0 {
+		return 0, fmt.Errorf("offline resolve failed: empty file list")
+	}
+	uploadDir, err := strconv.ParseInt(dstDir.GetID(), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid destination dir id: %s", dstDir.GetID())
+	}
+
+	var submitResp offlineSubmitResp
+	_, err = d.Request(OfflineSubmit, http.MethodPost, func(req *resty.Request) {
+		req.SetContext(ctx).SetBody(base.Json{
+			"resource_list": []base.Json{
+				{
+					"resource_id":    resourceID,
+					"select_file_id": selectFileIDs,
+				},
+			},
+			"upload_dir": uploadDir,
+		})
+	}, &submitResp)
+	if err != nil {
+		return 0, err
+	}
+	if len(submitResp.Data.TaskList) == 0 {
+		return 0, fmt.Errorf("offline submit failed: empty task list")
+	}
+	if submitResp.Data.TaskList[0].Result != 0 {
+		return 0, fmt.Errorf("offline submit failed")
+	}
+	if submitResp.Data.TaskList[0].TaskID == 0 {
+		return 0, fmt.Errorf("offline submit failed: empty task id")
+	}
+	return submitResp.Data.TaskList[0].TaskID, nil
+}
+
+func (d *Pan123) GetOfflineTask(ctx context.Context, taskID int64) (*offlineTask, error) {
+	if taskID == 0 {
+		return nil, fmt.Errorf("invalid task id")
+	}
+	page := 1
+	pageSize := 100
+	statusArr := []int{0, 1, 2, 3}
+	for {
+		var listResp offlineTaskListResp
+		_, err := d.Request(OfflineTaskList, http.MethodPost, func(req *resty.Request) {
+			req.SetContext(ctx).SetBody(base.Json{
+				"current_page": page,
+				"page_size":    pageSize,
+				"status_arr":   statusArr,
+			})
+		}, &listResp)
+		if err != nil {
+			return nil, err
+		}
+		for i := range listResp.Data.List {
+			if listResp.Data.List[i].TaskID == taskID {
+				return &listResp.Data.List[i], nil
+			}
+		}
+		if len(listResp.Data.List) == 0 || page*pageSize >= listResp.Data.Total {
+			break
+		}
+		page++
+	}
+	return nil, ErrOfflineTaskNotFound
+}
+
+func (d *Pan123) DeleteOfflineTasks(ctx context.Context, taskIDs []int64) error {
+	if len(taskIDs) == 0 {
+		return nil
+	}
+	_, err := d.Request(OfflineTaskDelete, http.MethodPost, func(req *resty.Request) {
+		req.SetContext(ctx).SetBody(base.Json{
+			"task_ids": taskIDs,
+		})
+	}, nil)
+	return err
 }
 
 func (d *Pan123) getFiles(ctx context.Context, parentId string, name string) ([]File, error) {

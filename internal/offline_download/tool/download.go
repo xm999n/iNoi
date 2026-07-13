@@ -2,6 +2,7 @@ package tool
 
 import (
 	"fmt"
+	"path"
 	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
@@ -32,9 +33,6 @@ type DownloadTask struct {
 }
 
 func (t *DownloadTask) Run() error {
-	if err := t.ReinitCtx(); err != nil {
-		return err
-	}
 	t.ClearEndTime()
 	t.SetStartTime(time.Now())
 	defer func() { t.SetEndTime(time.Now()) }()
@@ -149,10 +147,10 @@ func (t *DownloadTask) Update() (bool, error) {
 	if err != nil {
 		t.callStatusRetried++
 		log.Errorf("failed to get status of %s, retried %d times", t.ID, t.callStatusRetried)
+		if t.callStatusRetried > 5 {
+			return true, errors.Errorf("failed to get status of %s, retried %d times", t.ID, t.callStatusRetried)
+		}
 		return false, nil
-	}
-	if t.callStatusRetried > 5 {
-		return true, errors.Errorf("failed to get status of %s, retried %d times", t.ID, t.callStatusRetried)
 	}
 	t.callStatusRetried = 0
 	t.SetProgress(info.Progress)
@@ -201,11 +199,11 @@ func (t *DownloadTask) Transfer() error {
 				DstStorage:    dstStorage,
 				DstStorageMp:  dstStorage.GetStorage().MountPath,
 			},
-			groupID:      t.DstDirPath,
 			DeletePolicy: t.DeletePolicy,
 			Url:          t.Url,
 		}
 		tsk.SetTotalBytes(t.GetTotalBytes())
+		tsk.groupID = path.Join(tsk.DstStorageMp, tsk.DstActualPath)
 		task_group.TransferCoordinator.AddTask(tsk.groupID, nil)
 		TransferTaskManager.Add(tsk)
 		return nil

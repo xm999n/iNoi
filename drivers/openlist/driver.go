@@ -84,7 +84,7 @@ func (d *OpenList) List(ctx context.Context, dir model.Obj, args model.ListArgs)
 			},
 			Path:     dir.GetPath(),
 			Password: d.MetaPassword,
-			Refresh:  false,
+			Refresh:  d.PassRefreshFlagToUpsteam && args.Refresh,
 		})
 	})
 	if err != nil {
@@ -95,6 +95,7 @@ func (d *OpenList) List(ctx context.Context, dir model.Obj, args model.ListArgs)
 		file := model.ObjThumb{
 			Object: model.Object{
 				Name:     f.Name,
+				Path:     path.Join(dir.GetPath(), f.Name),
 				Modified: f.Modified,
 				Ctime:    f.Created,
 				Size:     f.Size,
@@ -360,6 +361,7 @@ func (d *OpenList) ArchiveDecompress(ctx context.Context, srcObj, dstDir model.O
 			Name:          []string{name},
 			PutIntoNewDir: args.PutIntoNewDir,
 			SrcDir:        dir,
+			Overwrite:     args.Overwrite,
 		})
 	})
 	return err

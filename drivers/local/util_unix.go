@@ -3,6 +3,7 @@
 package local
 
 import (
+	"errors"
 	"io/fs"
 	"strings"
 	"syscall"

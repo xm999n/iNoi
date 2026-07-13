@@ -1,0 +1,29 @@
+name: build_windows_386
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install mingw for 32-bit windows
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-i686
+        
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Build Windows 386 zip
+        run: bash build3.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iNoi-windows-386
+          path: build/iNoi-windows-386.zip

@@ -3,7 +3,6 @@ package strm
 import (
 	"context"
 	"fmt"
-
 	stdpath "path"
 	"strings"
 
@@ -19,6 +18,7 @@ func (d *Strm) listRoot() []model.Obj {
 	var objs []model.Obj
 	for k := range d.pathMap {
 		obj := model.Object{
+			Path:     "/" + k,
 			Name:     k,
 			IsFolder: true,
 			Modified: d.Modified,
@@ -58,7 +58,10 @@ func (d *Strm) list(ctx context.Context, dst, sub string, args *fs.ListArgs) ([]
 	if err != nil {
 		return nil, err
 	}
+	return d.convert2strmObjs(ctx, reqPath, objs), nil
+}
 
+func (d *Strm) convert2strmObjs(ctx context.Context, reqPath string, objs []model.Obj) []model.Obj {
 	var validObjs []model.Obj
 	for _, obj := range objs {
 		id, name, path := "", obj.GetName(), ""
@@ -98,7 +101,7 @@ func (d *Strm) list(ctx context.Context, dst, sub string, args *fs.ListArgs) ([]
 			},
 		})
 	}
-	return validObjs, nil
+	return validObjs
 }
 
 func (d *Strm) getLink(ctx context.Context, path string) string {
@@ -106,11 +109,18 @@ func (d *Strm) getLink(ctx context.Context, path string) string {
 	if d.EncodePath {
 		finalPath = utils.EncodePath(path, true)
 	}
-	if d.EnableSign {
+	if d.WithSign {
 		signPath := sign.Sign(path)
 		finalPath = fmt.Sprintf("%s?sign=%s", finalPath, signPath)
 	}
-	if d.LocalModel {
+	pathPrefix := d.PathPrefix
+	if len(pathPrefix) > 0 {
+		finalPath = stdpath.Join(pathPrefix, finalPath)
+	}
+	if !strings.HasPrefix(finalPath, "/") {
+		finalPath = "/" + finalPath
+	}
+	if d.WithoutUrl {
 		return finalPath
 	}
 	apiUrl := d.SiteUrl
@@ -119,8 +129,7 @@ func (d *Strm) getLink(ctx context.Context, path string) string {
 	} else {
 		apiUrl = common.GetApiUrl(ctx)
 	}
-
-	return fmt.Sprintf("%s/d%s",
+	return fmt.Sprintf("%s%s",
 		apiUrl,
 		finalPath)
 }

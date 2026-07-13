@@ -30,6 +30,7 @@ const (
 	ImageTypes                    = "image_types"
 	ProxyTypes                    = "proxy_types"
 	ProxyIgnoreHeaders            = "proxy_ignore_headers"
+	NonEFSZipEncoding             = "non_efs_zip_encoding"
 	AudioAutoplay                 = "audio_autoplay"
 	VideoAutoplay                 = "video_autoplay"
 	PreviewDownloadByDefault      = "preview_download_by_default"
@@ -50,11 +51,14 @@ const (
 	FilenameCharMapping     = "filename_char_mapping"
 	ForwardDirectLinkParams = "forward_direct_link_params"
 	IgnoreDirectLinkParams  = "ignore_direct_link_params"
+	IgnoreSystemFiles       = "ignore_system_files"
 	WebauthnLoginEnabled    = "webauthn_login_enabled"
 	SharePreview            = "share_preview"
 	ShareArchivePreview     = "share_archive_preview"
 	ShareForceProxy         = "share_force_proxy"
 	ShareSummaryContent     = "share_summary_content"
+	HandleHookAfterWriting  = "handle_hook_after_writing"
+	HandleHookRateLimit     = "handle_hook_rate_limit"
 
 	// index
 	SearchIndex     = "search_index"
@@ -72,6 +76,9 @@ const (
 
 	// 115
 	Pan115TempDir = "115_temp_dir"
+
+	// 123
+	Pan123TempDir = "123_temp_dir"
 
 	// 115_open
 	Pan115OpenTempDir = "115_open_temp_dir"
@@ -111,6 +118,7 @@ const (
 	// ldap
 	LdapLoginEnabled      = "ldap_login_enabled"
 	LdapServer            = "ldap_server"
+	LdapSkipTlsVerify     = "ldap_skip_tls_verify"
 	LdapManagerDN         = "ldap_manager_dn"
 	LdapManagerPassword   = "ldap_manager_password"
 	LdapUserSearchBase    = "ldap_user_search_base"
@@ -166,7 +174,7 @@ const (
 )
 
 // ContextKey is the type of context keys.
-type ContextKey int
+type ContextKey int8
 
 const (
 	_ ContextKey = iota
@@ -182,4 +190,5 @@ const (
 	UserAgentKey
 	PathKey
 	SharingIDKey
+	SkipHookKey
 )

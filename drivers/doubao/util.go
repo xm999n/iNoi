@@ -62,7 +62,7 @@ const (
 	VideoDataType    = "video"
 	DefaultChunkSize = int64(5 * 1024 * 1024) // 5MB
 	MaxRetryAttempts = 3                      // 最大重试次数
-	UserAgent        = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+	UserAgent        = base.UserAgentNT
 	Region           = "cn-north-1"
 	UploadTimeout    = 3 * time.Minute
 )
@@ -551,6 +551,7 @@ func (d *Doubao) UploadByMultipart(ctx context.Context, config *UploadConfig, fi
 	totalParts := (fileSize + chunkSize - 1) / chunkSize
 	// 创建分片信息组
 	parts := make([]UploadPart, totalParts)
+	var partsMutex sync.Mutex
 
 	up(10.0) // 更新进度
 	// 设置并行上传
@@ -562,7 +563,6 @@ func (d *Doubao) UploadByMultipart(ctx context.Context, config *UploadConfig, fi
 		retry.MaxJitter(200*time.Millisecond),
 	)
 
-	var partsMutex sync.Mutex
 	// 并行上传所有分片
 	hash := crc32.NewIEEE()
 	for partIndex := range totalParts {
